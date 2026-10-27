@@ -1,7 +1,6 @@
 package com.parallelspace.parallel_space
 
 import android.content.Context
-import android.content.Intent
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -38,7 +37,18 @@ object VaultStore {
         val groupKey: String get() = cloneUid.ifBlank { pkg }
     }
 
+    /** @deprecated 1.3.14 起不再发系统广播（BlackBox AMS hook 会 NPE）；保留常量以免旧代码编译失败。 */
     const val ACTION_VAULT_CHANGED = "com.parallelspace.parallel_space.action.VAULT_CHANGED"
+
+    private val changeListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addChangeListener(listener: () -> Unit) {
+        changeListeners.addIfAbsent(listener)
+    }
+
+    fun removeChangeListener(listener: () -> Unit) {
+        changeListeners.remove(listener)
+    }
 
     private const val PREFS = "vault_plain"
     private const val KEY_JSON = "entries_json"
@@ -103,11 +113,22 @@ object VaultStore {
 
     class Locked : IllegalStateException("locked")
 
+    /**
+     * 通知密码本变更。不用 [Context.sendBroadcast]：
+     * BlackBox 在宿主进程也安装了 IActivityManagerProxy.BroadcastIntent，
+     * Context.getClassLoader() 空指针会导致通知失败（1.3.11 诊断日志已证实）。
+     */
     fun notifyChanged(ctx: Context) {
+        invalidateCache()
+        for (l in changeListeners) {
+            try {
+                l()
+            } catch (_: Throwable) {
+            }
+        }
+        // 文件已由 persist 写入；FileObserver 是跨组件兜底
         try {
-            ctx.applicationContext.sendBroadcast(
-                Intent(ACTION_VAULT_CHANGED).setPackage(ctx.packageName),
-            )
+            vaultFile(ctx).setLastModified(System.currentTimeMillis())
         } catch (_: Throwable) {
         }
     }

@@ -11,9 +11,11 @@ void main() {
       expect(encodeVersionCode(1, 3, 0), 12300);
       expect(encodeVersionCode(1, 3, 6), 12306);
       expect(encodeVersionCode(1, 3, 13), 12313);
+      expect(encodeVersionCode(1, 3, 14), 12314);
       expect(versionCodeFromName('1.2.4'), 10204);
       expect(versionCodeFromName('1.3.0+12300'), 12300);
       expect(versionCodeFromName('1.3.13'), 12313);
+      expect(versionCodeFromName('1.3.14'), 12314);
       expect(versionCodeFromName('bogus'), isNull);
     });
   });

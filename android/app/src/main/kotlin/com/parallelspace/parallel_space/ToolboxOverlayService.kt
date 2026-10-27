@@ -44,8 +44,10 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * 分身在前台时显示的可拖动、可收起悬浮窗。
  *
- * 1.3.12：只读密码本（查看 / 一键填入 / 复制）；添加与编辑在主应用「密码本」页。
- * 保留 1.3.11：FLAG_NOT_FOCUSABLE、tick 防抖、AppOps 交叉验证、START_STICKY、看门狗。
+ * 1.3.14：展开时按面板实测宽高设 WindowManager.LayoutParams，并把 x/y 夹到屏内，
+ * 避免气泡停在右边缘时面板大半出屏、点击被当成 ACTION_OUTSIDE。
+ * outside_tap 先校验屏幕坐标；拖动只绑在标题栏把手；组件间不用 sendBroadcast。
+ * 1.3.12：只读密码本；保留 tick 防抖、AppOps、START_STICKY、看门狗。
  */
 class ToolboxOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -74,6 +76,11 @@ class ToolboxOverlayService : Service() {
     /** tick 连续读到 enabled/overlay 否定的次数；单次瞬假绝不 stopSelf。 */
     private var denyStreak = 0
     private var denySince = 0L
+    /** 收起时的气泡坐标；展开面板时可能把 x/y 挪回屏内，收起要还原。 */
+    private var bubbleX = 0
+    private var bubbleY = 0
+    private var expandedAt = 0L
+    private var vaultChangedListener: (() -> Unit)? = null
 
     private val tick = object : Runnable {
         override fun run() {
@@ -416,11 +423,12 @@ class ToolboxOverlayService : Service() {
         }
         // 不要 FLAG_BLUR_BEHIND / dimAmount：HyperOS 上会把整屏糊掉，分身无法点。
         lp = params
+        bubbleX = params.x
+        bubbleY = params.y
         bubbleView.setOnTouchListener(dragListener { toggle() })
         holder.setOnTouchListener { _, e ->
             if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                ToolboxCrashLog.append(this, "INFO", "collapse reason=outside_tap")
-                collapse()
+                handleOutsideTap(e)
                 true
             } else false
         }
@@ -487,12 +495,19 @@ class ToolboxOverlayService : Service() {
 
     private fun expand() {
         try {
+            val params = lp
+            if (params != null) {
+                bubbleX = params.x
+                bubbleY = params.y
+            }
             expanded = true
+            expandedAt = SystemClock.elapsedRealtime()
             cancelIdleDim()
             bubble?.animate()?.cancel()
             bubble?.alpha = 1f
             ensureOverlayFlags()
             applyVisibility()
+            layoutExpandedWindow(reason = "expand")
             val panel = card
             val gen = viewGen
             if (panel != null) {
@@ -505,7 +520,10 @@ class ToolboxOverlayService : Service() {
                     .scaleX(1f)
                     .scaleY(1f)
                     .setDuration(180)
-                    .withEndAction { if (gen != viewGen) return@withEndAction }
+                    .withEndAction {
+                        if (gen != viewGen) return@withEndAction
+                        layoutExpandedWindow(reason = "expand_end")
+                    }
                     .start()
             }
             refreshVaultAsync()
@@ -518,6 +536,13 @@ class ToolboxOverlayService : Service() {
         try {
             expanded = false
             mode = Mode.TOOLS
+            val params = lp
+            if (params != null) {
+                params.width = WindowManager.LayoutParams.WRAP_CONTENT
+                params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                params.x = bubbleX
+                params.y = bubbleY
+            }
             ensureOverlayFlags()
             val panel = card
             val gen = viewGen
@@ -554,13 +579,19 @@ class ToolboxOverlayService : Service() {
             if (expanded) {
                 rebuild("apply_visibility")
             }
-            val params = lp ?: return
-            val view = root ?: return
-            try {
-                if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
-            } catch (t: Throwable) {
-                Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
-                ToolboxCrashLog.append(this, "ERROR", "updateViewLayout applyVisibility", t)
+            if (expanded) {
+                layoutExpandedWindow(reason = "apply_visibility")
+            } else {
+                val params = lp ?: return
+                val view = root ?: return
+                params.width = WindowManager.LayoutParams.WRAP_CONTENT
+                params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                try {
+                    if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
+                    ToolboxCrashLog.append(this, "ERROR", "updateViewLayout applyVisibility", t)
+                }
             }
         } catch (t: Throwable) {
             ToolboxCrashLog.append(this, "ERROR", "applyVisibility failed", t)
@@ -629,10 +660,90 @@ class ToolboxOverlayService : Service() {
             }
         }
         anim.start()
+        bubbleX = target
+        bubbleY = params.y
         getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", target).putInt("y", params.y).apply()
     }
 
-    /** 悬浮窗永久 NOT_FOCUSABLE：绝不因编辑切换焦点（编辑在独立 Activity）。 */
+    /**
+     * 展开面板时：按实测宽高设置窗口，并把 x/y 夹进屏幕。
+     * 根因：气泡常停在右边缘 x≈屏宽-48，WRAP_CONTENT 面板 320dp 向右长出屏外，
+     * 用户点到的「看得见的按钮」其实落在窗口外 → ACTION_OUTSIDE → 立刻收起，onClick 永不触发。
+     */
+    private fun layoutExpandedWindow(reason: String) {
+        val params = lp ?: return
+        val view = root ?: return
+        val panel = card ?: return
+        if (!expanded) return
+        try {
+            val targetW = dp(320)
+            val maxH = (screenHeight() * 0.85f).toInt().coerceAtLeast(dp(200))
+            panel.measure(
+                View.MeasureSpec.makeMeasureSpec(targetW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST),
+            )
+            val w = panel.measuredWidth.coerceAtLeast(dp(280)).coerceAtMost(screenWidth())
+            val h = panel.measuredHeight.coerceAtLeast(dp(120)).coerceAtMost(maxH)
+            val sw = screenWidth()
+            val sh = screenHeight()
+            val (nx, ny) = clampOverlayPosition(params.x, params.y, w, h, sw, sh)
+            params.width = w
+            params.height = h
+            params.x = nx
+            params.y = ny
+            if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+            ToolboxCrashLog.append(
+                this,
+                "INFO",
+                "layoutExpanded reason=$reason w=$w h=$h x=$nx y=$ny sw=$sw sh=$sh bubble=($bubbleX,$bubbleY)",
+            )
+        } catch (t: Throwable) {
+            ToolboxCrashLog.append(this, "ERROR", "layoutExpanded failed reason=$reason", t)
+        }
+    }
+
+    /** ACTION_OUTSIDE：只有触摸点确实在面板屏幕矩形之外才收起；展开后 350ms 内忽略。 */
+    private fun handleOutsideTap(e: MotionEvent) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - expandedAt < 350L) {
+            ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=expand_grace")
+            return
+        }
+        val panel = card
+        val x = e.rawX.toInt()
+        val y = e.rawY.toInt()
+        if (panel != null && panel.isShown && panel.width > 0 && panel.height > 0) {
+            val loc = IntArray(2)
+            try {
+                panel.getLocationOnScreen(loc)
+            } catch (_: Throwable) {
+                loc[0] = 0
+                loc[1] = 0
+            }
+            val left = loc[0]
+            val top = loc[1]
+            val right = left + panel.width
+            val bottom = top + panel.height
+            val margin = dp(12)
+            val inside = x in (left - margin)..(right + margin) && y in (top - margin)..(bottom + margin)
+            ToolboxCrashLog.append(
+                this,
+                "INFO",
+                "outside_tap raw=($x,$y) panel=[$left,$top-$right,$bottom] inside=$inside",
+            )
+            // raw 为 0,0 时（部分机型 OUTSIDE 不带坐标）不要误收；只有明确在外才收
+            if (inside || (x == 0 && y == 0 && left > 0)) {
+                ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=coords_inside_or_unknown")
+                return
+            }
+        } else {
+            ToolboxCrashLog.append(this, "INFO", "outside_tap raw=($x,$y) panel=null/hidden")
+        }
+        ToolboxCrashLog.append(this, "INFO", "collapse reason=outside_tap")
+        collapse()
+    }
+
+        /** 悬浮窗永久 NOT_FOCUSABLE：绝不因编辑切换焦点（编辑在独立 Activity）。 */
     private fun ensureOverlayFlags() {
         val params = lp ?: return
         val view = root ?: return
@@ -669,6 +780,8 @@ class ToolboxOverlayService : Service() {
                 Mode.TOOLS -> buildTools(panel)
                 Mode.VAULT -> buildVault(panel)
             }
+            // 内容变高/变矮后重新量窗，避免触控区域与可见面板错位
+            layoutExpandedWindow(reason = "rebuild_$reason")
         } catch (t: Throwable) {
             Log.w(TAG, "rebuild failed reason=$reason", t)
             ToolboxCrashLog.append(this, "ERROR", "rebuild mode=$mode reason=$reason", t)
@@ -676,42 +789,43 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun registerVaultListener() {
-        if (vaultReceiver == null) {
-            val r = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    if (intent?.action != VaultStore.ACTION_VAULT_CHANGED) return
-                    handler.post {
-                        try {
-                            VaultStore.invalidateCache()
-                        } catch (_: Throwable) {
-                        }
-                        refreshVaultAsync(thenRebuild = true)
-                        ToolboxCrashLog.append(
-                            this@ToolboxOverlayService,
-                            "INFO",
-                            "vault refreshed reason=broadcast",
-                        )
+        // BlackBox 在宿主进程也 hook 了 AMS broadcastIntent，sendBroadcast 会 NPE。
+        // 改用进程内监听 + FileObserver，不再 registerReceiver / sendBroadcast。
+        if (vaultChangedListener == null) {
+            val l: () -> Unit = {
+                handler.post {
+                    try {
+                        VaultStore.invalidateCache()
+                    } catch (_: Throwable) {
                     }
+                    refreshVaultAsync(thenRebuild = true)
+                    ToolboxCrashLog.append(
+                        this@ToolboxOverlayService,
+                        "INFO",
+                        "vault refreshed reason=in_process",
+                    )
                 }
             }
-            vaultReceiver = r
-            val filter = IntentFilter(VaultStore.ACTION_VAULT_CHANGED)
+            vaultChangedListener = l
             try {
-                if (Build.VERSION.SDK_INT >= 33) {
-                    registerReceiver(r, filter, Context.RECEIVER_NOT_EXPORTED)
-                } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    registerReceiver(r, filter)
-                }
+                VaultStore.addChangeListener(l)
             } catch (err: Throwable) {
-                ToolboxCrashLog.append(this, "ERROR", "registerVaultListener", err)
-                vaultReceiver = null
+                ToolboxCrashLog.append(this, "ERROR", "addChangeListener", err)
+                vaultChangedListener = null
             }
         }
         startVaultFileObserver()
     }
 
     private fun unregisterVaultListener() {
+        val l = vaultChangedListener
+        vaultChangedListener = null
+        if (l != null) {
+            try {
+                VaultStore.removeChangeListener(l)
+            } catch (_: Throwable) {
+            }
+        }
         val r = vaultReceiver
         vaultReceiver = null
         if (r != null) {
@@ -776,12 +890,24 @@ class ToolboxOverlayService : Service() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(44)
+            // 左侧窄把手专用于拖动，避免标题 OnTouch 吞掉子控件事件
+            val handle = View(this@ToolboxOverlayService).apply {
+                background = round(if (pal.night) 0x55FFFFFF.toInt() else 0x332F7CF6.toInt(), dp(2).toFloat())
+                layoutParams = LinearLayout.LayoutParams(dp(4), dp(22)).apply {
+                    marginEnd = dp(10)
+                }
+                contentDescription = "拖动"
+                setOnTouchListener(dragListener { })
+            }
+            addView(handle)
             val name = TextView(this@ToolboxOverlayService).apply {
                 text = title
                 setTextColor(pal.text)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
                 typeface = Typeface.DEFAULT_BOLD
-                setOnTouchListener(dragListener { })
+                isClickable = false
+                isFocusable = false
             }
             addView(name, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(link(action, onAction))
@@ -1049,6 +1175,7 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun iconAction(drawable: Int, desc: String, onClick: (View) -> Unit): ImageView {
         val pal = Palette(this)
         val size = dp(44)
@@ -1062,10 +1189,20 @@ class ToolboxOverlayService : Service() {
             setPadding(pad, pad, pad, pad)
             background = circle(if (pal.night) 0x22FFFFFF.toInt() else 0x142F7CF6.toInt())
             layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = dp(2) }
-            setOnClickListener { v -> onClick(v) }
+            setOnTouchListener { _, e ->
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "touch_down $desc")
+                }
+                false
+            }
+            setOnClickListener { v ->
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap click $desc")
+                onClick(v)
+            }
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun primaryFillButton(text: String, onClick: (View) -> Unit): TextView {
         val pal = Palette(this)
         return TextView(this).apply {
@@ -1081,7 +1218,16 @@ class ToolboxOverlayService : Service() {
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             lp.topMargin = dp(10)
             layoutParams = lp
-            setOnClickListener { v -> onClick(v) }
+            setOnTouchListener { _, e ->
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "touch_down fill")
+                }
+                false
+            }
+            setOnClickListener { v ->
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap click fill")
+                onClick(v)
+            }
         }
     }
 
@@ -1257,6 +1403,7 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun button(text: String, onClick: () -> Unit): TextView {
         val pal = Palette(this)
         return TextView(this).apply {
@@ -1266,7 +1413,18 @@ class ToolboxOverlayService : Service() {
             gravity = Gravity.CENTER
             background = round(pal.accent, dp(20).toFloat())
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            setOnClickListener { onClick() }
+            minimumHeight = dp(44)
+            isClickable = true
+            setOnTouchListener { _, e ->
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "touch_down btn=$text")
+                }
+                false
+            }
+            setOnClickListener {
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap click btn=$text")
+                onClick()
+            }
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             gap.topMargin = dp(8)
             layoutParams = gap
@@ -1325,8 +1483,18 @@ class ToolboxOverlayService : Service() {
                         val dy = (e.rawY - downY).toInt()
                         if (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop) dragging = true
                         if (dragging) {
-                            params.x = (startX + dx).coerceIn(0, (screenWidth() - dp(48)).coerceAtLeast(0))
-                            params.y = (startY + dy).coerceIn(0, (screenHeight() - dp(48)).coerceAtLeast(0))
+                            val winW = if (expanded) params.width.coerceAtLeast(dp(48)) else dp(48)
+                            val winH = if (expanded) params.height.coerceAtLeast(dp(48)) else dp(48)
+                            val (nx, ny) = clampOverlayPosition(
+                                startX + dx,
+                                startY + dy,
+                                winW,
+                                winH,
+                                screenWidth(),
+                                screenHeight(),
+                            )
+                            params.x = nx
+                            params.y = ny
                             try {
                                 wm?.updateViewLayout(root, params)
                             } catch (_: Throwable) {
@@ -1337,9 +1505,19 @@ class ToolboxOverlayService : Service() {
                     MotionEvent.ACTION_UP -> {
                         if (!dragging) onClick()
                         else {
-                            getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", params.x).putInt("y", params.y).apply()
-                            snapToEdge(halfHide = false)
-                            scheduleIdleDim()
+                            if (expanded) {
+                                bubbleX = params.x
+                                bubbleY = params.y
+                                getSharedPreferences("toolbox", MODE_PRIVATE)
+                                    .edit().putInt("x", params.x).putInt("y", params.y).apply()
+                            } else {
+                                getSharedPreferences("toolbox", MODE_PRIVATE)
+                                    .edit().putInt("x", params.x).putInt("y", params.y).apply()
+                                bubbleX = params.x
+                                bubbleY = params.y
+                                snapToEdge(halfHide = false)
+                                scheduleIdleDim()
+                            }
                         }
                         return true
                     }
@@ -1464,6 +1642,20 @@ class ToolboxOverlayService : Service() {
 
     companion object {
         private const val TAG = "ToolboxOverlay"
+
+        /** 纯函数：把悬浮窗左上角夹到屏幕内，保证宽高完整可见。供测试与运行时共用。 */
+        fun clampOverlayPosition(
+            x: Int,
+            y: Int,
+            winW: Int,
+            winH: Int,
+            screenW: Int,
+            screenH: Int,
+        ): Pair<Int, Int> {
+            val maxX = (screenW - winW).coerceAtLeast(0)
+            val maxY = (screenH - winH).coerceAtLeast(0)
+            return x.coerceIn(0, maxX) to y.coerceIn(0, maxY)
+        }
         private const val CHANNEL = "toolbox_overlay"
         private const val NOTIFICATION_ID = 1004
         private const val GRACE_MS = 30_000L

@@ -113,6 +113,21 @@ class ToolboxAccessibilityService : AccessibilityService() {
                         }
                         continue
                     }
+                    // 跳过本应用的系统层悬浮窗（TYPE_SYSTEM），避免填到工具箱自己
+                    if (type == AccessibilityWindowInfo.TYPE_SYSTEM) {
+                        val rPkg = try {
+                            r.packageName?.toString()
+                        } catch (_: Throwable) {
+                            null
+                        }
+                        if (rPkg != null && rPkg == packageName) {
+                            try {
+                                r.recycle()
+                            } catch (_: Throwable) {
+                            }
+                            continue
+                        }
+                    }
                     val bucket = if (type == AccessibilityWindowInfo.TYPE_APPLICATION) app else other
                     if (bucket.none { sameNode(it, r) } && app.none { sameNode(it, r) } && other.none { sameNode(it, r) }) {
                         bucket += r

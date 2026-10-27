@@ -1,6 +1,24 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.13（versionCode 12313），下一次是 1.3.14（12314）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.14（versionCode 12314），下一次是 1.3.15（12315）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.14] - 2026-10-28
+
+### 修复
+
+- **工具箱按钮点了没反应（根因）**：诊断日志在 1.3.13 安装后只有 `collapse reason=outside_tap`，**没有**任何 `tap copy_*` / `tap fill`。气泡常停在右边缘（如 x=1320），展开后仍用 `WRAP_CONTENT` 且不改坐标，320dp 面板向右长出屏幕；用户点到的按钮其实在窗口外，系统抛 `ACTION_OUTSIDE`，面板立刻收起，`onClick` 从未触发。
+- **对策**：展开时按面板实测宽高写入 `LayoutParams`，并把 x/y 夹到屏内（`clampOverlayPosition`）；收起还原气泡坐标。`outside_tap` 先核对屏幕坐标，坐标在面板内或未知则忽略；展开后 350ms 内忽略。拖动只绑在标题栏左侧窄把手。
+- **BlackBox 广播 NPE**：宿主进程里 `IActivityManagerProxy$BroadcastIntent` 会让 `sendBroadcast` 空指针。密码本变更改为进程内 `CopyOnWriteArrayList` 监听 + 原有 `FileObserver`，去掉组件间 `sendBroadcast`。
+- **复制**：主线程写入剪贴板；失败时用 `createPackageContext` 再试，并写诊断日志。
+- **一键填入**：继续走无障碍进程内实例；跳过本包 `TYPE_SYSTEM` 悬浮窗，优先应用窗口。
+
+### 体验
+
+- 复制 / 一键填入：`ACTION_DOWN` 与 `onClick` 都写诊断日志，成功有 Toast 与震动。
+
+### 其他
+
+- 版本 `1.3.14+12314`。
 
 ## [1.3.13] - 2026-10-28
 

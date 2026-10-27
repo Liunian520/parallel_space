@@ -5,6 +5,6 @@
   "apkShareUrl": "https://link.liunianai.cn/9tfrt5",
   "sha256": "48cccd1e770da25eeb326eaeea558511443b6bc3a709f3af1d78c607598738ff",
   "size": 21264367,
-  "notes": "1.3.14：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "notes": "1.3.14：修复工具箱按钮点了没反应——展开面板夹到屏内，outside_tap 校验坐标；密码本变更改为进程内通知，避开 BlackBox 广播 NPE；复制/填入补日志与剪贴板回退。",
   "publishedAt": "2026-10-28T01:43:32+08:00"
 }

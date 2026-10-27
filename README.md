@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.13-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.14-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -62,7 +62,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.13+12313**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.14+12314**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -70,9 +70,9 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.13`（versionCode `12313`），下一次是 `1.3.14`（`12314`）。
+只把修订号加 1：当前 `1.3.14`（versionCode `12314`），下一次是 `1.3.15`（`12315`）。
 
-1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.13→12313）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
+1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.14→12314）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
 每次改版本，同时更新：
 
@@ -121,7 +121,7 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 
 **悬浮窗不出现 / 分身还在小球却没了**
 
-先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。1.3.9 起会用 `/proc` 兜底识别 `:p0`、`:p1` …，并在打开分身后较长时间内保持气泡。**1.3.12** 起：账号的添加/编辑只在 App「密码本」页完成；悬浮窗只读。**1.3.13** 起：复制按钮在账号/密码行右侧，一键填入在卡片底部全宽；点击必有 Toast 与日志。保留 1.3.11 的 tick 防抖与 AppOps 交叉验证。若小球仍消失，到 **设置 → 工具箱诊断日志** 复制内容反馈（日志里有 `reason=` / `tick deny`）。
+先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。1.3.9 起会用 `/proc` 兜底识别 `:p0`、`:p1` …，并在打开分身后较长时间内保持气泡。**1.3.12** 起：账号的添加/编辑只在 App「密码本」页完成；悬浮窗只读。**1.3.13** 起：复制按钮在账号/密码行右侧，一键填入在卡片底部全宽。**1.3.14** 起：展开面板会夹到屏内，修复「点了像没点其实是 outside_tap」；密码本变更不再走系统广播。保留 tick 防抖与 AppOps 交叉验证。若小球仍消失，到 **设置 → 工具箱诊断日志** 复制内容反馈（日志里有 `reason=` / `tick deny`）。
 
 **无障碍服务过一段时间自己关了**
 

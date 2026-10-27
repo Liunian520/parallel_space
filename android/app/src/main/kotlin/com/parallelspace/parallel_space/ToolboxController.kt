@@ -152,13 +152,25 @@ object ToolboxController {
     fun copyText(ctx: Context, text: String): Boolean {
         if (text.isEmpty()) return false
         val app = ctx.applicationContext
-        fun doCopy(): Boolean = try {
-            val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
-            true
-        } catch (t: Throwable) {
-            ToolboxCrashLog.append(app, "ERROR", "copyText failed", t)
-            false
+        fun doCopy(): Boolean {
+            fun write(target: Context, tag: String): Boolean = try {
+                val cm = target.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
+                ToolboxCrashLog.append(app, "INFO", "copyText ok via=$tag len=${text.length}")
+                true
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(app, "ERROR", "copyText failed via=$tag", t)
+                false
+            }
+            if (write(app, "app")) return true
+            // BlackBox / 厂商 hook 偶发搞挂 application 的 ClipboardManager，换包上下文再试
+            return try {
+                val pkgCtx = app.createPackageContext(app.packageName, 0)
+                write(pkgCtx, "package_ctx")
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(app, "ERROR", "copyText package_ctx create failed", t)
+                false
+            }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) return doCopy()
         val box = booleanArrayOf(false)
