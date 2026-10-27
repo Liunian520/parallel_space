@@ -1,0 +1,222 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION"
+        tools:ignore="MockLocation,ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_PROFILES"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 用量统计：需用户在系统设置中手动授予 -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- 仅同签名的平行空间（个人空间 ↔ 工作资料）可调用跨资料操作 -->
+    <permission
+        android:name="com.parallelspace.parallel_space.permission.WORK_OP"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.parallelspace.parallel_space.permission.WORK_OP" />
+
+    <uses-feature android:name="android.software.managed_users" android:required="false" />
+    <uses-feature android:name="android.software.device_admin" android:required="false" />
+
+    <application
+        android:label="平行空间"
+        android:name=".ParallelSpaceApp"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- Bcore 的 :black 守护进程声明了 specialUse，但 AAR 没带 PROPERTY_SPECIAL_USE_FGS_SUBTYPE。
+             targetSdk 34+ 上 startForeground 会抛异常，系统随后杀掉 :black，分身无法安装/启动。 -->
+        <service
+            android:name="top.niunaijun.blackbox.core.system.DaemonService"
+            tools:node="merge">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="进程内虚拟分身引擎的守护进程" />
+        </service>
+        <service
+            android:name="top.niunaijun.blackbox.core.system.DaemonService$DaemonInnerService"
+            tools:node="merge">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="进程内虚拟分身引擎的守护进程" />
+        </service>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- 桌面快捷方式 / 小组件跳板：在工作资料中直接启动分身（exported：旧式 MIUI 快捷方式由启动器拉起） -->
+        <activity
+            android:name=".ShortcutTrampolineActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- 跨资料静默操作：必须 exported 才能被 CrossProfileApps 在另一用户启动；绝不是 LAUNCHER -->
+        <activity
+            android:name=".ProfileOpActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:finishOnTaskLaunch="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.parallelspace.parallel_space.action.PROFILE_OP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ProvisioningDoneActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.app.action.PROVISIONING_SUCCESSFUL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".PinResultReceiver"
+            android:exported="false" />
+
+        <!-- 工作资料内执行操作（默认禁用，仅在工作资料实例中由资料所有者启用） -->
+        <activity
+            android:name=".WorkOpActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:permission="com.parallelspace.parallel_space.permission.WORK_OP"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="com.parallelspace.parallel_space.action.WORK_OP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".CloneAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".MockLocationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user-requested system-wide mock location active" />
+        </service>
+
+        <service
+            android:name=".MockTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_location"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".CloneWidgetProvider"
+            android:exported="true"
+            android:label="平行空间">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/clone_widget_info" />
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- Impeller（Vulkan，不支持时自动回退 OpenGL ES） -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="true" />
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 列出可启动应用（复制到工作资料 / 用量统计），无需 QUERY_ALL_PACKAGES -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <intent>
+            <action android:name="android.app.action.PROVISION_MANAGED_PROFILE"/>
+        </intent>
+        <intent>
+            <action android:name="com.parallelspace.parallel_space.action.WORK_OP"/>
+        </intent>
+        <!-- MIUI / HyperOS 权限编辑页（桌面快捷方式权限） -->
+        <intent>
+            <action android:name="miui.intent.action.APP_PERM_EDITOR"/>
+        </intent>
+        <!-- 厂商权限 / 自启动管理页（resolveActivity 需要可见性） -->
+        <package android:name="com.miui.securitycenter"/>
+        <package android:name="com.miui.powerkeeper"/>
+        <package android:name="com.huawei.systemmanager"/>
+        <package android:name="com.hihonor.systemmanager"/>
+        <package android:name="com.oplus.safecenter"/>
+        <package android:name="com.coloros.safecenter"/>
+        <package android:name="com.oplus.battery"/>
+        <package android:name="com.oppo.safe"/>
+        <package android:name="com.vivo.permissionmanager"/>
+        <package android:name="com.iqoo.secure"/>
+        <package android:name="com.samsung.android.lool"/>
+        <package android:name="com.samsung.android.sm"/>
+    </queries>
+</manifest>

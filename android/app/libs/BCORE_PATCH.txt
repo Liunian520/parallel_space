@@ -1,0 +1,19 @@
+bcore-release.aar 里的 classes.jar 已打补丁（Apache-2.0 源码对应的字节码，只改一个方法）。
+
+BlackBoxCore.getProcessName(Context) 原来只查 ActivityManager.getRunningAppProcesses()。
+在 HyperOS / Android 15 的 Application.attachBaseContext 里，这个列表经常是 null 或不含当前 pid，
+方法抛 RuntimeException("processName = null")，doAttachBaseContext 失败，VirtualEngine.available 一直是 false。
+
+补丁后的方法体：
+  aload_0
+  invokestatic com/parallelspace/parallel_space/ProcessNameCompat.get(Landroid/content/Context;)Ljava/lang/String;
+  areturn
+
+重新打补丁（替换了上游 AAR 之后）：
+  解出 classes.jar 里的 top/niunaijun/blackbox/BlackBoxCore.class
+  javac -cp asm-9.7.1.jar android/tools/PatchBlackBoxProcessName.java
+  java -cp asm-9.7.1.jar:. PatchBlackBoxProcessName BlackBoxCore.class
+  jar uf classes.jar top/niunaijun/blackbox/BlackBoxCore.class
+  再打回 AAR
+
+不要改 ProcessNameCompat.get 的类名或方法签名。

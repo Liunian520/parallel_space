@@ -1,0 +1,187 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:parallel_space/services/native_bridge.dart';
+
+const _png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+/// 模拟原生层（MethodChannel parallel_space/native），记录所有调用。
+class FakeNative {
+  FakeNative({
+    this.state = 'ready',
+    this.rom = 'hyperos',
+    List<Map<String, Object?>>? work,
+    List<Map<String, Object?>>? personal,
+  })  : work = work ?? [],
+        personal = personal ?? [];
+
+  static const channel = MethodChannel('parallel_space/native');
+  String state;
+  String rom;
+  bool provisioningAllowed = true;
+  String provisionResult = 'ok';
+  String pinResult = 'requested';
+  bool linked = true;
+  bool canInteract = true;
+  bool canRequestInteract = false;
+
+  /// 默认关闭：既有 widget 测试仍走工作资料路径。
+  static bool virtualAvailable = false;
+  String wipeResult = 'ok';
+  String cloneResult = 'ok';
+  final List<Map<String, Object?>> work;
+  final List<Map<String, Object?>> personal;
+  final List<MethodCall> calls = [];
+
+  /// launchWorkApp 时工作资料中没有该应用（模拟需先复制）。
+  final Set<String> missingInWork = {};
+
+  Iterable<String> get methods => calls.map((c) => c.method);
+
+  static Map<String, Object?> app(String pkg, String label, {String cat = 'social', String ver = '1.0', bool system = false}) =>
+      {'pkg': pkg, 'label': label, 'ver': ver, 'cat': cat, 'system': system};
+
+  void install(WidgetTester? t) {
+    virtualAvailable = false;
+    NativeBridge.debugIsAndroid = true;
+    final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    m.setMockMethodCallHandler(channel, _handle);
+    addTearDown(() {
+      m.setMockMethodCallHandler(channel, null);
+      NativeBridge.debugIsAndroid = null;
+    });
+  }
+
+  Map<String, Object?> get _status => {
+        'state': state,
+        'provisioningAllowed': provisioningAllowed,
+        'xspace': rom == 'hyperos',
+        'rom': rom,
+        'romLabel': rom == 'hyperos' ? '小米 HyperOS' : '原生 Android',
+        'romNote': rom == 'hyperos' ? '系统的「应用双开」不是工作资料' : '',
+        'sdk': 35,
+        'linked': linked,
+        'canInteract': canInteract,
+        'canRequestInteract': canRequestInteract,
+      };
+
+  Future<Object?> _handle(MethodCall call) async {
+    calls.add(call);
+    final a = call.arguments is Map ? call.arguments as Map : const {};
+    switch (call.method) {
+      case 'workStatus':
+        return _status;
+      case 'listWorkApps':
+        return {..._status, 'apps': state == 'ready' ? work : []};
+      case 'listPersonalApps':
+        final inWork = work.map((e) => e['pkg']).toSet();
+        return [for (final p in personal) {...p, 'inWork': inWork.contains(p['pkg'])}];
+      case 'provisionWork':
+        if (provisionResult == 'ok') state = 'ready';
+        return provisionResult;
+      case 'cloneIntoWork':
+        if (cloneResult != 'ok') return cloneResult;
+        final pkg = a['pkg'] as String;
+        missingInWork.remove(pkg);
+        if (!work.any((e) => e['pkg'] == pkg)) {
+          work.add(personal.firstWhere((e) => e['pkg'] == pkg, orElse: () => app(pkg, pkg)));
+        }
+        return 'ok';
+      case 'hideWorkApp':
+        work.removeWhere((e) => e['pkg'] == a['pkg']);
+        return 'ok';
+      case 'isInWork':
+        return work.any((e) => e['pkg'] == a['pkg']) && !missingInWork.contains(a['pkg']);
+      case 'launchWorkApp':
+        return missingInWork.contains(a['pkg']) ? 'not_found' : 'ok';
+      case 'suspendWorkApp':
+        return 'ok';
+      case 'icons':
+        final bytes = Uint8List.fromList(base64Decode(_png));
+        return {for (final p in (a['pkgs'] as List)) p: bytes};
+      case 'pinShortcut':
+        return {'r': pinResult, 'sid': 'clone_${a['pkg']}', 'rom': rom};
+      case 'isPinned':
+        return false;
+      case 'openShortcutPermission':
+      case 'openAutoStart':
+        return 'rom';
+      case 'pinLegacy':
+        return 'sent';
+      case 'repairWorkLink':
+        if (!canInteract) {
+          return {'r': 'need_permission', 'detail': 'canInteractAcrossProfiles=false', 'canRequest': canRequestInteract};
+        }
+        linked = true;
+        return {'r': 'ok', 'detail': 'started ProfileOpActivity'};
+      case 'requestInteractAcrossProfiles':
+        canInteract = true;
+        linked = true;
+        return 'ok';
+      case 'virtualStatus':
+      case 'retryVirtualEngine':
+        return {
+          'available': virtualAvailable,
+          'engine': 'fake',
+          'license': 'test',
+          'userId': 0,
+          if (!virtualAvailable) 'error': 'disabled_in_test',
+        };
+      case 'listVirtualClones':
+        return virtualAvailable ? work : <Map<String, dynamic>>[];
+      case 'cloneVirtual':
+        if (!virtualAvailable) return {'r': 'engine_unavailable'};
+        final pkg = a['pkg'] as String;
+        if (!work.any((e) => e['pkg'] == pkg)) {
+          work.add(personal.firstWhere((e) => e['pkg'] == pkg, orElse: () => app(pkg, pkg)));
+        }
+        return {'r': cloneResult == 'ok' ? 'ok' : cloneResult};
+      case 'launchVirtual':
+        if (!virtualAvailable) return {'r': 'engine_unavailable'};
+        final pkg = a['pkg'] as String?;
+        if (pkg != null && missingInWork.contains(pkg)) return {'r': 'not_found'};
+        return {'r': 'ok'};
+      case 'deleteVirtual':
+        if (!virtualAvailable) return {'r': 'engine_unavailable'};
+        work.removeWhere((e) => e['pkg'] == a['pkg']);
+        return {'r': 'ok'};
+      case 'isInsideWorkProfile':
+        return false;
+      case 'canInstallPackages':
+        return true;
+      case 'fetchUpdateManifestViaWeb':
+        return null;
+      case 'installApk':
+        return 'ok';
+      case 'openPersonalSpace':
+        return 'ok';
+      case 'openWorkProfileSettings':
+        return 'android.settings.SYNC_SETTINGS';
+      case 'wipeWorkProfile':
+        if (wipeResult == 'ok') {
+          state = 'none';
+          work.clear();
+        }
+        return wipeResult;
+      case 'isMocking':
+        return false;
+      case 'getLaunchCloneId':
+        return null;
+      case 'startMock':
+        return 'ok';
+      default:
+        return null;
+    }
+  }
+
+  /// 原生 → Dart 事件。
+  static Future<void> emit(String method, Object? args) async {
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(MethodCall(method, args)),
+      (_) {},
+    );
+  }
+}

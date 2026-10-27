@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 平行标志：两个错位的圆角方块，表示“同一应用的两个空间” -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#66FFFFFF"
+        android:pathData="M46,34h20a8,8 0 0 1 8,8v20a8,8 0 0 1 -8,8h-20a8,8 0 0 1 -8,-8v-20a8,8 0 0 1 8,-8z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M42,38h20a8,8 0 0 1 8,8v20a8,8 0 0 1 -8,8h-20a8,8 0 0 1 -8,-8v-20a8,8 0 0 1 8,-8z
+" />
+</vector>

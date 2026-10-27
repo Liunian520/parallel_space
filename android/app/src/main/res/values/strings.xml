@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_desc">快速打开平行空间中的分身</string>
+    <string name="tile_label">虚拟定位</string>
+    <string name="widget_empty">还没有分身，点此打开平行空间</string>
+</resources>
