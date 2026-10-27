@@ -6,12 +6,13 @@ import 'package:parallel_space/services/update_manifest.dart';
 
 void main() {
   group('versionCode scheme', () {
-    test('1.2.4 → 10204, 1.3.0 → 10300', () {
+    test('1.2.4 → 10204；1.3.x → 12300+patch', () {
       expect(encodeVersionCode(1, 2, 4), 10204);
-      expect(encodeVersionCode(1, 3, 0), 10300);
+      expect(encodeVersionCode(1, 3, 0), 12300);
+      expect(encodeVersionCode(1, 3, 6), 12306);
       expect(versionCodeFromName('1.2.4'), 10204);
-      expect(versionCodeFromName('1.3.0+10300'), 10300);
-      expect(versionCodeFromName('1.3.5'), 10305);
+      expect(versionCodeFromName('1.3.0+12300'), 12300);
+      expect(versionCodeFromName('1.3.6'), 12306);
       expect(versionCodeFromName('bogus'), isNull);
     });
   });
@@ -28,8 +29,8 @@ void main() {
   group('UpdateManifest.tryParse', () {
     test('valid with apkShareUrl', () {
       final m = UpdateManifest.tryParse({
-        'versionName': '1.3.5',
-        'versionCode': 10305,
+        'versionName': '1.3.6',
+        'versionCode': 12306,
         'apkUrl': 'https://link.liunianai.cn/f/disk/a/parallel_space.apk',
         'apkShareUrl': 'https://link.liunianai.cn/abcd',
         'sha256': 'a' * 64,
@@ -39,8 +40,9 @@ void main() {
       });
       expect(m, isNotNull);
       expect(m!.apkShareUrl, 'https://link.liunianai.cn/abcd');
-      expect(m.isNewerThanApp(currentCode: 10304, currentName: '1.3.4'), isTrue);
-      expect(m.isNewerThanApp(currentCode: 10305, currentName: '1.3.5'), isFalse);
+      expect(m.isNewerThanApp(currentCode: 10305, currentName: '1.3.5'), isTrue);
+      expect(m.isNewerThanApp(currentCode: 12302, currentName: '1.3.2'), isTrue);
+      expect(m.isNewerThanApp(currentCode: 12306, currentName: '1.3.6'), isFalse);
     });
 
     test('missing fields → null', () {

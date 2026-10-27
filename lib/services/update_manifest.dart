@@ -76,7 +76,8 @@ class UpdateManifest {
 
   bool isNewerThan(int currentVersionCode) => versionCode > currentVersionCode;
 
-  /// 优先比 versionCode；若本机 buildNumber 不是 1xxyy 编码，再用 versionName 编码比较。
+  /// 优先按 versionCode 数值比较（12306 > 10305 > 12302 均可正确判断）。
+  /// 若本机 buildNumber 异常偏小，再用 versionName 编码兜底。
   bool isNewerThanApp({required int currentCode, required String currentName}) {
     if (currentCode >= 10000) return versionCode > currentCode;
     final encoded = _fromName(currentName);

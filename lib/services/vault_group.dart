@@ -1,4 +1,4 @@
-/// 密码本条目。明文只在验证通过后出现在内存里，落盘由原生层加密。
+/// 密码本条目。与原生 VaultStore 共用本机明文存储。
 class VaultEntry {
   const VaultEntry({
     required this.id,

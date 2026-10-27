@@ -74,7 +74,7 @@ class ToolboxScreen extends StatelessWidget {
                 GlassTile(
                   icon: Icons.accessibility_new_rounded,
                   title: '无障碍填入',
-                  subtitle: '开启后，点「填入」会写入当前输入框。没开时改为复制，30 秒后清除',
+                  subtitle: '开启后，点「填入」会写入当前输入框。没开时改为复制到剪贴板',
                   onTap: () async {
                     final r = await NativeBridge.compatOpen('accessibility');
                     if (context.mounted && r == 'error') showGlassSnack(context, '没有打开无障碍设置');
@@ -85,7 +85,7 @@ class ToolboxScreen extends StatelessWidget {
                 GlassTile(
                   icon: Icons.key_rounded,
                   title: '管理账号密码',
-                  subtitle: '按分身或包名分组，打开前要验证身份',
+                  subtitle: '按分身或包名分组，一点即可填入或复制',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VaultScreen())),
                 ),
               ]),

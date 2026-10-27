@@ -1,35 +1,14 @@
 package com.parallelspace.parallel_space
 
 import android.content.Context
-import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-/** 认证通过后的短时会话。折叠悬浮窗或点「锁定」会清掉内存里的明文。 */
-object VaultSession {
-    @Volatile
-    private var untilElapsed = 0L
-
-    fun open(seconds: Int = 60) {
-        untilElapsed = SystemClock.elapsedRealtime() + seconds * 1000L
-    }
-
-    fun valid(): Boolean = SystemClock.elapsedRealtime() < untilElapsed
-
-    fun close() {
-        untilElapsed = 0L
-    }
-
-    fun touch() {
-        if (valid()) open()
-    }
-}
-
 /**
- * 整份密码本加密后落在应用私有目录。按分身 uid（没有则按包名）分组。
- * 未解锁时不把明文放进内存。
+ * 账号密码本：明文 JSON 存在 SharedPreferences，方便一键填入，不做生物识别门禁。
+ * 若本机还有 1.3.4/1.3.5 的 Keystore 加密文件 `vault.enc`，能解开就迁过来。
  */
 object VaultStore {
     data class Entry(
@@ -54,22 +33,24 @@ object VaultStore {
         val groupKey: String get() = cloneUid.ifBlank { pkg }
     }
 
+    private const val PREFS = "vault_plain"
+    private const val KEY_JSON = "entries_json"
+    private const val KEY_MIGRATED = "migrated_enc"
+
     private val lock = Any()
     private var cache: MutableList<Entry>? = null
 
+    /** 兼容旧调用：明文存储不再需要会话，这里只清内存缓存。 */
     fun lock() {
         synchronized(lock) { cache = null }
-        VaultSession.close()
     }
 
     fun list(ctx: Context): List<Entry> = synchronized(lock) {
-        requireSession()
         load(ctx).toList()
     }
 
     /** @return "ok" 或错误说明 */
     fun upsert(ctx: Context, raw: Map<*, *>): String = synchronized(lock) {
-        requireSession()
         val pkg = raw.str("pkg").trim().replace("\n", "")
         if (pkg.isEmpty() || pkg.length > 200) return "请填写应用包名"
         val label = raw.str("label").trim().ifEmpty { "未命名" }.take(40)
@@ -89,7 +70,6 @@ object VaultStore {
     }
 
     fun delete(ctx: Context, id: String): String = synchronized(lock) {
-        requireSession()
         val items = load(ctx)
         val removed = items.removeAll { it.id == id }
         if (!removed) return "not_found"
@@ -98,42 +78,38 @@ object VaultStore {
     }
 
     fun find(ctx: Context, id: String): Entry? = synchronized(lock) {
-        requireSession()
         load(ctx).firstOrNull { it.id == id }
-    }
-
-    private fun requireSession() {
-        if (!VaultSession.valid()) throw Locked()
-        VaultSession.touch()
     }
 
     class Locked : IllegalStateException("locked")
 
     private fun load(ctx: Context): MutableList<Entry> {
         cache?.let { return it }
-        val f = file(ctx)
-        if (!f.isFile || f.length() == 0L) {
-            cache = mutableListOf()
-            return cache!!
-        }
-        val plain = VaultCrypto.decrypt(f.readBytes())
-        val root = JSONObject(String(plain, Charsets.UTF_8))
-        val arr = root.optJSONArray("entries") ?: JSONArray()
+        migrateIfNeeded(ctx)
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_JSON, null)
         val items = mutableListOf<Entry>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val id = o.optString("id")
-            val pkg = o.optString("pkg")
-            if (id.isBlank() || pkg.isBlank()) continue
-            items += Entry(
-                id = id,
-                pkg = pkg,
-                cloneUid = o.optString("clone"),
-                label = o.optString("label").ifBlank { "未命名" },
-                username = o.optString("user"),
-                password = o.optString("pass"),
-                note = o.optString("note"),
-            )
+        if (!raw.isNullOrBlank()) {
+            try {
+                val root = JSONObject(raw)
+                val arr = root.optJSONArray("entries") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val id = o.optString("id")
+                    val pkg = o.optString("pkg")
+                    if (id.isBlank() || pkg.isBlank()) continue
+                    items += Entry(
+                        id = id,
+                        pkg = pkg,
+                        cloneUid = o.optString("clone"),
+                        label = o.optString("label").ifBlank { "未命名" },
+                        username = o.optString("user"),
+                        password = o.optString("pass"),
+                        note = o.optString("note"),
+                    )
+                }
+            } catch (_: Throwable) {
+            }
         }
         cache = items
         return items
@@ -153,19 +129,53 @@ object VaultStore {
                     .put("note", e.note),
             )
         }
-        val plain = JSONObject().put("v", 1).put("entries", arr).toString().toByteArray(Charsets.UTF_8)
-        val blob = VaultCrypto.encrypt(plain)
-        val f = file(ctx)
-        val tmp = File(f.parentFile, f.name + ".tmp")
-        tmp.writeBytes(blob)
-        if (!tmp.renameTo(f)) {
-            f.writeBytes(blob)
-            tmp.delete()
-        }
+        val json = JSONObject().put("v", 2).put("entries", arr).toString()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_JSON, json)
+            .apply()
         cache = items
     }
 
-    private fun file(ctx: Context) = File(ctx.filesDir, "vault.enc")
+    /** 尽量把旧版 vault.enc 迁到明文；解不开就跳过，不影响新条目。 */
+    private fun migrateIfNeeded(ctx: Context) {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_MIGRATED, false)) return
+        val enc = File(ctx.filesDir, "vault.enc")
+        if (!enc.isFile || enc.length() == 0L) {
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+            return
+        }
+        try {
+            val plain = VaultCrypto.tryDecrypt(enc.readBytes()) ?: run {
+                // 需要生物识别才能解，本次解不开；下次启动再试
+                return
+            }
+            val root = JSONObject(String(plain, Charsets.UTF_8))
+            val arr = root.optJSONArray("entries") ?: JSONArray()
+            val items = mutableListOf<Entry>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                val pkg = o.optString("pkg")
+                if (id.isBlank() || pkg.isBlank()) continue
+                items += Entry(
+                    id = id,
+                    pkg = pkg,
+                    cloneUid = o.optString("clone"),
+                    label = o.optString("label").ifBlank { "未命名" },
+                    username = o.optString("user"),
+                    password = o.optString("pass"),
+                    note = o.optString("note"),
+                )
+            }
+            persist(ctx, items)
+            enc.delete()
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        } catch (_: Throwable) {
+            // 保留 enc，下次再试；不阻断明文密码本
+        }
+    }
 
     private fun Map<*, *>.str(k: String): String = this[k]?.toString() ?: ""
 }

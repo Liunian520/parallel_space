@@ -21,11 +21,13 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.5 → 10305', () {
-    expect(kAppVersionName, '1.3.5');
-    expect(kAppVersionCode, 10305);
-    expect(encodeVersionCode(1, 3, 5), kAppVersionCode);
-    expect(versionCodeFromName('1.3.5'), 10305);
+  test('版本号只加最后一位：1.3.6 → 12306', () {
+    expect(kAppVersionName, '1.3.6');
+    expect(kAppVersionCode, 12306);
+    expect(encodeVersionCode(1, 3, 6), kAppVersionCode);
+    expect(versionCodeFromName('1.3.6'), 12306);
+    expect(encodeVersionCode(1, 3, 6), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 6), greaterThan(10305));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -101,10 +103,10 @@ void main() {
     await t.scrollUntilVisible(find.text('本项目开源'), 400);
     expect(find.textContaining('流年似水'), findsOneWidget);
     expect(find.text('https://github.com/Liunian520/parallel_space'), findsOneWidget);
-    expect(find.textContaining('1.3.5'), findsWidgets);
+    expect(find.textContaining('1.3.6'), findsWidgets);
   });
 
-  testWidgets('密码本验证后可以添加、分组和删除', (t) async {
+  testWidgets('密码本可以直接添加、分组和删除', (t) async {
     final native = FakeNative()..currentPackage = 'com.tencent.mm';
     native.install(t);
     SharedPreferences.setMockInitialValues({

@@ -40,7 +40,7 @@ class FakeNative {
   bool overlayGranted = false;
   String currentPackage = '';
   String vaultUnlockResult = 'ok';
-  bool vaultOpen = false;
+  bool vaultOpen = true;
   final List<Map<String, Object?>> vault = [];
 
   Iterable<String> get methods => calls.map((c) => c.method);
@@ -204,9 +204,8 @@ class FakeNative {
         vaultOpen = true;
         return 'ok';
       case 'vaultList':
-        return {'locked': !vaultOpen, 'entries': vaultOpen ? vault : <Map<String, Object?>>[]};
+        return {'locked': false, 'entries': vault};
       case 'vaultUpsert':
-        if (!vaultOpen) return 'locked';
         final id = a['id'] is String && (a['id'] as String).isNotEmpty ? a['id'] as String : 'id${vault.length + 1}';
         vault.removeWhere((e) => e['id'] == id);
         vault.add({

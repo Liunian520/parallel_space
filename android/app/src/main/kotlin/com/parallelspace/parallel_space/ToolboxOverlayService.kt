@@ -37,7 +37,7 @@ import androidx.core.content.ContextCompat
 import android.content.pm.ServiceInfo
 
 /**
- * 分身在前台时显示的可拖动、可收起悬浮窗。风格对齐主应用的毛玻璃和 Material You。
+ * 分身在前台时显示的可拖动、可收起悬浮窗。小卡片半透明背景，不使用系统 blurBehind，不挡下层触摸。
  * 工具列表来自 [ToolboxCatalog]，目前只有账号密码本。
  */
 class ToolboxOverlayService : Service() {
@@ -168,15 +168,18 @@ class ToolboxOverlayService : Service() {
             x = prefs.getInt("x", screenWidth() - bubbleSize - dp(12))
             y = prefs.getInt("y", dp(160))
         }
-        if (Build.VERSION.SDK_INT >= 31) {
-            try {
-                params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                params.blurBehindRadius = 48
-            } catch (_: Throwable) {
-            }
-        }
+        // 不要 FLAG_BLUR_BEHIND / dimAmount：HyperOS 上会把整屏糊掉，分身无法点。
         lp = params
         bubbleView.setOnTouchListener(dragListener { toggle() })
+        holder.setOnTouchListener { _, e ->
+            if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                expanded = false
+                mode = Mode.TOOLS
+                focusable(false)
+                applyVisibility()
+                true
+            } else false
+        }
         try {
             window.addView(holder, params)
         } catch (_: Throwable) {
@@ -201,7 +204,9 @@ class ToolboxOverlayService : Service() {
         expanded = !expanded
         if (!expanded) {
             mode = Mode.TOOLS
-            VaultStore.lock()
+            focusable(false)
+        } else {
+            // 展开：小卡片 + 点窗外收起，触摸透传到下层应用
             focusable(false)
         }
         applyVisibility()
@@ -224,17 +229,19 @@ class ToolboxOverlayService : Service() {
         val view = root ?: return
         val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        // on=true：编辑时要键盘焦点；仍 NOT_TOUCH_MODAL，窗外点击穿透并收起
+        // on=false：气泡或只读面板，NOT_FOCUSABLE，不抢下层应用
         params.flags = if (on) {
-            base or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            base or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        } else if (expanded) {
+            base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
         } else {
             base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
-        if (Build.VERSION.SDK_INT >= 31) {
-            try {
-                params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-            } catch (_: Throwable) {
-            }
-        }
+        params.dimAmount = 0f
         try {
             wm?.updateViewLayout(view, params)
         } catch (_: Throwable) {
@@ -298,25 +305,10 @@ class ToolboxOverlayService : Service() {
             mode = Mode.TOOLS
             rebuild()
         })
-        if (!VaultSession.valid()) {
-            panel.addView(body("验证身份后才能查看和填入。密码用 Android Keystore 的 AES-GCM 加密，只保存在本机。"))
-            panel.addView(button("验证身份") {
-                try {
-                    startActivity(
-                        Intent(this, VaultAuthActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } catch (_: Throwable) {
-                    toast("无法打开验证")
-                }
-            })
-            return
-        }
         val entries = try {
             VaultStore.list(this)
         } catch (_: Throwable) {
-            VaultStore.lock()
-            panel.addView(body("需要重新验证"))
+            panel.addView(body("读取失败，请重试"))
             return
         }
         panel.addView(button("添加账号") {
@@ -331,7 +323,7 @@ class ToolboxOverlayService : Service() {
             val hit = groups[key].orEmpty().any { it.pkg == pkg || it.cloneUid == "w:$pkg" }
             if (hit) 0 else 1
         }.thenBy { it })
-        if (keys.isEmpty()) col.addView(body("还没有账号。添加后可以一键填入。"))
+        if (keys.isEmpty()) col.addView(body("还没有账号。添加后可以一键填入或复制。"))
         for (key in keys) {
             val list = groups[key].orEmpty().sortedBy { it.label }
             val current = list.any { it.pkg == pkg }
@@ -340,10 +332,6 @@ class ToolboxOverlayService : Service() {
         }
         scroll.addView(col)
         panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(280)))
-        panel.addView(link("锁定", {
-            VaultStore.lock()
-            rebuild()
-        }))
     }
 
     private fun entryRow(e: VaultStore.Entry): LinearLayout {
@@ -383,7 +371,7 @@ class ToolboxOverlayService : Service() {
             try {
                 VaultStore.delete(this, e.id)
             } catch (_: Throwable) {
-                toast("删除失败，请重新验证")
+                toast("删除失败")
             }
             rebuild()
         })
@@ -437,13 +425,6 @@ class ToolboxOverlayService : Service() {
                 focusable(false)
                 rebuild()
             }
-            "locked", "need_auth" -> {
-                VaultStore.lock()
-                mode = Mode.VAULT
-                focusable(false)
-                rebuild()
-                toast("请重新验证")
-            }
             else -> toast(if (r == "error") "保存失败" else r)
         }
     }
@@ -463,9 +444,8 @@ class ToolboxOverlayService : Service() {
 
     private fun fillMessage(r: String) = when (r) {
         "filled" -> "已填入当前输入框"
-        "copied" -> "未开启无障碍，已复制到剪贴板，30 秒后清除"
-        "copied_no_field" -> "没有找到输入框，已复制到剪贴板，30 秒后清除"
-        "locked", "need_auth" -> "请重新验证"
+        "copied" -> "未开启无障碍，已复制到剪贴板"
+        "copied_no_field" -> "没有找到输入框，已复制到剪贴板"
         else -> "填入失败"
     }
 

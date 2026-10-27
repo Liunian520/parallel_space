@@ -39,7 +39,7 @@ object ToolboxCatalog {
 class PasswordVaultTool : ToolboxTool {
     override val id = "vault"
     override val title = "账号密码本"
-    override val summary = "加密保存，验证后可填入当前输入框"
+    override val summary = "保存账号密码，一点即可填入或复制"
 }
 
 /**
@@ -57,7 +57,6 @@ object ToolboxController {
     private const val NOTIFY_OVERLAY = 1003
 
     private val handler = Handler(Looper.getMainLooper())
-    private var clearClip: Runnable? = null
     var onVaultAuthedListener: (() -> Unit)? = null
 
     fun install(app: Application) {
@@ -127,8 +126,7 @@ object ToolboxController {
     }
 
     /**
-     * 无障碍不可用时的退路：把密码放进剪贴板，30 秒后清空。
-     * 用户名留给界面提示，避免一次粘贴把两行都贴进同一个框。
+     * 无障碍不可用时的退路：把密码（没有则用户名）放进剪贴板，不自动清除。
      */
     fun copySecret(ctx: Context, password: String, username: String) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -136,18 +134,7 @@ object ToolboxController {
         try {
             cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
         } catch (_: Throwable) {
-            return
         }
-        clearClip?.let { handler.removeCallbacks(it) }
-        val task = Runnable {
-            try {
-                if (Build.VERSION.SDK_INT >= 28) cm.clearPrimaryClip()
-                else cm.setPrimaryClip(ClipData.newPlainText("", ""))
-            } catch (_: Throwable) {
-            }
-        }
-        clearClip = task
-        handler.postDelayed(task, 30_000)
     }
 
     /** "filled" | "copied" | "copied_no_field" */
@@ -194,43 +181,24 @@ object ToolboxController {
     }
 
     private fun listPayload(ctx: Context): Map<String, Any?> {
-        if (!VaultSession.valid()) return mapOf("locked" to true, "entries" to emptyList<Any>())
         return try {
             mapOf("locked" to false, "entries" to VaultStore.list(ctx).map { it.toMap() })
-        } catch (e: VaultStore.Locked) {
-            mapOf("locked" to true, "entries" to emptyList<Any>())
-        } catch (e: android.security.keystore.UserNotAuthenticatedException) {
-            VaultStore.lock()
-            mapOf("locked" to true, "error" to "need_auth", "entries" to emptyList<Any>())
         } catch (e: Throwable) {
-            mapOf("locked" to true, "error" to (e.message ?: "error"), "entries" to emptyList<Any>())
+            mapOf("locked" to false, "error" to (e.message ?: "error"), "entries" to emptyList<Any>())
         }
     }
 
     private fun mutate(ctx: Context, block: () -> String): String {
-        if (!VaultAuth.deviceSecure(ctx)) return "need_lock"
-        if (!VaultSession.valid()) return "locked"
         return try {
             block()
-        } catch (e: VaultStore.Locked) {
-            "locked"
-        } catch (e: android.security.keystore.UserNotAuthenticatedException) {
-            VaultStore.lock()
-            "need_auth"
         } catch (e: Throwable) {
             "error"
         }
     }
 
     private fun fillEntry(ctx: Context, id: String): String {
-        if (!VaultSession.valid()) return "locked"
         val entry = try {
             VaultStore.find(ctx, id)
-        } catch (e: VaultStore.Locked) {
-            return "locked"
-        } catch (e: android.security.keystore.UserNotAuthenticatedException) {
-            VaultStore.lock()
-            return "need_auth"
         } catch (_: Throwable) {
             return "error"
         } ?: return "not_found"
@@ -268,7 +236,7 @@ object ToolboxController {
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        post(ctx, NOTIFY_A11Y, "无障碍服务已关闭", "一键填入已改为复制到剪贴板，30 秒后自动清除。点此可重新开启。", open)
+        post(ctx, NOTIFY_A11Y, "无障碍服务已关闭", "一键填入已改为复制到剪贴板。点此可重新开启。", open)
     }
 
     private fun canNotify(ctx: Context): Boolean {

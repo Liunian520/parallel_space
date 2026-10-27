@@ -26,8 +26,14 @@ const Duration kUpdateManifestTimeout = Duration(seconds: 20);
 /// WebView 过盾最长等待。
 const Duration kUpdateManifestWebTimeout = Duration(seconds: 45);
 
-/// 将「1.2.4」编码为清单用 versionCode：1*10000+2*100+4 → 10204。
-int encodeVersionCode(int major, int minor, int patch) => major * 10000 + minor * 100 + patch;
+/// 编码 versionCode。
+///
+/// 1.3.x 使用 `12300 + patch`（1.3.1→12301…1.3.6→12306），避开曾误用的 10303–10305 降号。
+/// 其他主次版本仍用 major×10000 + minor×100 + patch。
+int encodeVersionCode(int major, int minor, int patch) {
+  if (major == 1 && minor == 3) return 12300 + patch;
+  return major * 10000 + minor * 100 + patch;
+}
 
 /// 解析 versionName（如 1.3.0 / 2.0.0）为可比整数；失败返回 null。
 int? versionCodeFromName(String name) {

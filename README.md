@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.5-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.6-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -19,7 +19,7 @@
 | 📌 | 桌面快捷方式 | 固定到桌面后直接启动虚拟分身 |
 | 📍 | 虚拟定位 | 系统级模拟位置，前台服务持续推送，对整机生效 |
 | 🧰 | 工具箱 | 分身在前台时出现可拖动、可收起的悬浮小窗 |
-| 🔑 | 账号密码本 | Android Keystore + AES-GCM 加密；按分身或包名分组；打开前验证身份；可用无障碍填入，否则复制到剪贴板并在 30 秒后清除 |
+| 🔑 | 账号密码本 | 本机保存，按分身或包名分组；一点即可填入（无障碍）或复制到剪贴板；不设生物识别门禁 |
 | 🔄 | 应用内更新 | 设置里检查更新；清单走 GitHub 直链，APK 走网盘永久直链 `/f/...`（无 Link 盾）；失败时可浏览器打开分享页 |
 | 📱 | 机型适配 | 小米、华为、荣耀、OPPO、vivo、三星和 Pixel 的权限页集中处理，设置里可以逐项查看 |
 
@@ -48,7 +48,7 @@ Android 14 及以上需要声明前台服务类型：虚拟定位、工具箱悬
 1. 用下面的命令打出 release APK，或使用你信任的已签名安装包。
 2. 在系统里允许安装未知来源应用。
 3. 安装后打开「平行空间」。HyperOS 上如果提示引擎未就绪，到 **设置 → 机型适配检查** 看进程名和电池项。
-4. 要用分身里的悬浮小窗：到 **设置 → 工具箱** 打开开关，并允许悬浮窗。一键填入需要再打开无障碍服务；不打开也可以，密码会复制到剪贴板，30 秒后清除。
+4. 要用分身里的悬浮小窗：到 **设置 → 工具箱** 打开开关，并允许悬浮窗。一键填入需要再打开无障碍服务；不打开也可以，密码会复制到剪贴板。
 
 ## 构建
 
@@ -61,13 +61,17 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk`。版本来自 `pubspec.yaml`，当前是 **1.3.5+10305**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.6+12306**。
+
+**签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
 `android/app/libs/bcore-release.aar` 带有进程名字节码补丁，说明见 `android/app/libs/BCORE_PATCH.txt`。`proguard-rules.pro` 必须保留 `blackbox`、`blackreflection`、`black.**` 和 `me.weishu`，否则发布包里虚拟引擎无法初始化。
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.5`（versionCode `10305`），下一次是 `1.3.6`（`10306`）。`versionCode = 主版本 × 10000 + 次版本 × 100 + 修订号`。
+只把修订号加 1：当前 `1.3.6`（versionCode `12306`），下一次是 `1.3.7`（`12307`）。
+
+1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.6→12306）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
 每次改版本，同时更新：
 
@@ -93,7 +97,7 @@ android/app/src/main/kotlin/com/parallelspace/parallel_space/
   OemAdapter.kt                 各厂商跳转和适配检查
   ToolboxOverlayService.kt      悬浮小窗
   ToolboxAccessibilityService   一键填入
-  VaultStore.kt / VaultCrypto   密码本（Keystore AES-GCM）
+  VaultStore.kt / VaultCrypto   密码本（明文 SharedPreferences；VaultCrypto 仅迁移旧加密文件）
   ProcessNameCompat.java        HyperOS 进程名补丁入口
 android/app/libs/               Bcore AAR 与 black-reflection
 android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
@@ -136,3 +140,11 @@ HyperOS 的「应用双开」不是工作资料，本应用也不依赖它。引
 流年似水
 
 开源地址：<https://github.com/Liunian520/parallel_space>
+
+**覆盖安装提示「必须卸载」**
+
+多半是旧包 versionCode（如 10305）高于你手里的包，或签名证书不一致。1.3.6 起 versionCode 固定为 `12300+修订号`，并始终用同一把 debug 证书签名。装 1.3.6 之后即可正常覆盖更新。
+
+**工具箱把整屏糊住、分身点不了**
+
+1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。

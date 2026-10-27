@@ -8,7 +8,7 @@ import '../state/clone_store.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
 
-/// 主应用里的密码本。和悬浮窗共用同一份加密存储，打开前走生物识别或设备锁。
+/// 主应用里的密码本。和悬浮窗共用同一份本机明文存储，打开即可用，不验证身份。
 class VaultScreen extends StatefulWidget {
   const VaultScreen({super.key});
 
@@ -17,7 +17,6 @@ class VaultScreen extends StatefulWidget {
 }
 
 class _VaultScreenState extends State<VaultScreen> {
-  var _locked = true;
   var _loading = true;
   String? _error;
   List<VaultEntry> _entries = const [];
@@ -32,51 +31,20 @@ class _VaultScreenState extends State<VaultScreen> {
   Future<void> _boot() async {
     _currentPkg = await NativeBridge.toolboxCurrentPackage() ?? '';
     if (!mounted) return;
-    await _unlock();
-  }
-
-  Future<void> _unlock() async {
-    setState(() => _loading = true);
-    final r = await NativeBridge.vaultUnlock();
-    if (!mounted) return;
-    if (r != 'ok') {
-      setState(() {
-        _locked = true;
-        _loading = false;
-        _error = switch (r) {
-          'need_lock' => '请先在系统设置里设置锁屏密码或生物识别。',
-          'cancelled' => '已取消验证。',
-          _ => '验证失败，请再试一次。',
-        };
-        _entries = const [];
-      });
-      return;
-    }
     await _reload();
   }
 
   Future<void> _reload() async {
+    setState(() => _loading = true);
     final raw = await NativeBridge.vaultList();
     if (!mounted) return;
-    final locked = raw?['locked'] == true;
     final list = raw?['entries'];
     setState(() {
-      _locked = locked;
       _loading = false;
-      _error = locked ? '验证已过期，请重新验证。' : null;
+      _error = raw?['error'] is String ? raw!['error'] as String : null;
       _entries = [
-        if (!locked && list is List) ...list.map(VaultEntry.fromMap).nonNulls,
+        if (list is List) ...list.map(VaultEntry.fromMap).nonNulls,
       ];
-    });
-  }
-
-  Future<void> _lock() async {
-    await NativeBridge.vaultLock();
-    if (!mounted) return;
-    setState(() {
-      _locked = true;
-      _entries = const [];
-      _error = null;
     });
   }
 
@@ -106,7 +74,7 @@ class _VaultScreenState extends State<VaultScreen> {
     if (r == 'ok') {
       await _reload();
     } else {
-      showGlassSnack(context, r == 'locked' ? '请重新验证' : '删除失败');
+      showGlassSnack(context, '删除失败');
     }
   }
 
@@ -115,17 +83,10 @@ class _VaultScreenState extends State<VaultScreen> {
     if (!mounted) return;
     showGlassSnack(context, switch (r) {
       'filled' => '已填入当前输入框',
-      'copied' => '未开启无障碍，已复制到剪贴板，30 秒后清除',
-      'copied_no_field' => '没有找到输入框，已复制到剪贴板，30 秒后清除',
-      'locked' || 'need_auth' => '请重新验证',
+      'copied' => '未开启无障碍，已复制到剪贴板',
+      'copied_no_field' => '没有找到输入框，已复制到剪贴板',
       _ => '填入失败',
     });
-    if (r == 'locked' || r == 'need_auth') {
-      setState(() {
-        _locked = true;
-        _entries = const [];
-      });
-    }
   }
 
   @override
@@ -147,20 +108,15 @@ class _VaultScreenState extends State<VaultScreen> {
               Row(children: [
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
                 Expanded(child: Text('账号密码本', style: tt.headlineMedium)),
-                if (!_locked) IconButton(tooltip: '锁定', onPressed: _lock, icon: const Icon(Icons.lock_rounded)),
               ]),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 8, 4, 12),
+                child: Text('账号和密码保存在本机，方便一键填入。未开无障碍时会复制到剪贴板。'),
+              ),
               if (_loading)
                 const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
-              else if (_locked) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 12, 4, 12),
-                  child: Text('账号和密码用 Android Keystore 里的 AES-GCM 密钥加密，只保存在本机。查看前需要生物识别或锁屏密码。'),
-                ),
+              else ...[
                 if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!)),
-                FilledButton(onPressed: _unlock, child: const Text('验证后查看')),
-                if (_error != null && _error!.contains('锁屏'))
-                  TextButton(onPressed: () => NativeBridge.compatOpen('lock'), child: const Text('去设置锁屏')),
-              ] else ...[
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FilledButton.icon(
@@ -257,8 +213,6 @@ class _VaultEditorState extends State<_VaultEditor> {
     }
     setState(() => _busy = false);
     final msg = switch (r) {
-      'need_lock' => '请先设置锁屏',
-      'locked' || 'need_auth' => '请重新验证',
       null => '保存失败',
       _ => r == 'error' ? '保存失败' : r,
     };
