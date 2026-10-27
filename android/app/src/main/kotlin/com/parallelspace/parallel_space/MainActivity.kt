@@ -252,7 +252,18 @@ class MainActivity : FlutterFragmentActivity() {
                 "accessibility" to OemAdapter.accessibilityOn(this),
             ),
         )
+        handleOpenVault(intent)
         handleOpenCompat(intent)
+    }
+
+    private fun handleOpenVault(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_VAULT, false) != true) return
+        val pkg = intent.getStringExtra(EXTRA_VAULT_PKG).orEmpty()
+        intent.removeExtra(EXTRA_OPEN_VAULT)
+        intent.removeExtra(EXTRA_VAULT_PKG)
+        window.decorView.post {
+            channel?.invokeMethod("openVault", mapOf("pkg" to pkg))
+        }
     }
 
     private fun handleOpenCompat(intent: Intent?) {
