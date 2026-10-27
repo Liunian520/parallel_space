@@ -5,6 +5,6 @@
   "apkShareUrl": "https://link.liunianai.cn/9qdk36",
   "sha256": "75bd29e242f34285b116e1325d534a8cc1af4e5757d3e88f331e08963c58f4f1",
   "size": 21598727,
-  "notes": "1.3.9：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "notes": "1.3.9：修 HyperOS 上工具箱小球误消失（/proc 识别 :pN + STICKY 保活）；悬浮窗/无障碍全面防崩溃；诊断日志可复制分享；崩溃后自动拉回悬浮窗。",
   "publishedAt": "2026-10-27T21:17:23+08:00"
 }
