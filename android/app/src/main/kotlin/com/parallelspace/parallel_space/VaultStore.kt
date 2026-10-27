@@ -36,6 +36,8 @@ object VaultStore {
     private const val PREFS = "vault_plain"
     private const val KEY_JSON = "entries_json"
     private const val KEY_MIGRATED = "migrated_enc"
+    /** 跨进程可读的明文密码本（编辑页在独立进程写入）。 */
+    private const val FILE_JSON = "vault_plain.json"
 
     private val lock = Any()
     private var cache: MutableList<Entry>? = null
