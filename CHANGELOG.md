@@ -1,6 +1,31 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.9（versionCode 12309），下一次是 1.3.10（12310）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.10（versionCode 12310），下一次是 1.3.11（12311）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.10] - 2026-10-27
+
+### 修复
+
+- **工具箱输入密码时闪烁后消失**：用户反馈在工具箱「添加/编辑账号」里敲密码时，悬浮窗会快速闪一下然后整颗小球没了（红米 K80 / HyperOS）。相对 1.3.9 的新线索是：崩溃发生在**工具箱自己的密码框**，不是分身应用的输入框。
+- **根因（代码审计，防御性全修）**：
+  1. `resolveAppInfoAsync` 等异步回调在 `expanded` 时无条件 `rebuild()`，编辑页 `removeAllViews()` 拆掉正在输入的 `EditText`，表现为闪烁；
+  2. 打开系统键盘时，IME 区域会给悬浮窗发 `ACTION_OUTSIDE`；与焦点切换叠在一起时，偶发收起；
+  3. `focusable(true)` / `applyVisibility` 里 `updateViewLayout` 一旦失败就 `removeView()`，HyperOS 在 IME 过渡期更容易踩中，直接把气泡摘掉。
+- **1.3.10 对策**：
+  - 进入编辑即「会话钉住」；输入框有焦点、IME 可见或 IME 守卫宽限期内，`tick` 绝不 `hideOverlay`，窗外触摸一律忽略；
+  - 编辑页已挂着输入框时，跳过图标/列表等异步 `rebuild`（仅 `enter_edit` / `force_edit` 允许重建）；
+  - 相同 window flags 不再重复 `updateViewLayout`；编辑中 `updateViewLayout` 失败只记日志、不拆窗；
+  - `removeView` 前捕获草稿，看门狗重建编辑页时恢复已输入内容；
+  - 每次主动隐藏写明 `reason=`（`tick_hide` / `outside_tap` / `ime_focus` / `apply_visibility_update_failed` 等），诊断日志可直接对照。
+
+### 变更
+
+- 版本 `1.3.10+12310`。
+
+### 说明
+
+- 保留 1.3.9 的崩溃日志、`START_STICKY`、看门狗与 `/proc` 分身识别。
+- 若仍复现，请到「设置 → 工具箱诊断日志」复制全文反馈。
 
 ## [1.3.9] - 2026-10-27
 

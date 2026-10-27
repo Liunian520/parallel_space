@@ -21,7 +21,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -54,6 +56,11 @@ import java.util.concurrent.atomic.AtomicReference
  * - HyperOS 上 getRunningAppProcesses 经常看不到 :pN，改为 /proc cmdline 兜底，
  *   并在启动后 STICKY_MS 内即使列表空也保持气泡，避免「分身还在、小球消失」。
  * - 所有悬浮窗操作与 rebuild 包 try/catch；动画代数防泄漏；崩溃写入 toolbox_crash.log。
+ *
+ * 1.3.10：
+ * - 在工具箱自己的密码框打字时不再闪烁消失：编辑会话钉住、IME 守卫、
+ *   忽略键盘区域 ACTION_OUTSIDE；异步 rebuild 跳过编辑页；updateViewLayout
+ *   失败在编辑中不 removeView；草稿保住已输入内容；隐藏一律写 reason=。
  */
 class ToolboxOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -81,6 +88,17 @@ class ToolboxOverlayService : Service() {
     /** 视图代数：removeView / 重建时递增，避免旧动画回调整坏新窗。 */
     private var viewGen = 0
     private var edgeAnimator: android.animation.ValueAnimator? = null
+    /**
+     * 编辑会话钉住：进入 EDIT 或输入框获焦后为 true。
+     * 仅在主动取消 / 保存 / 收起时清除。防止 IME 过渡期 tick / 异步回调拆窗。
+     */
+    private var editSessionPinned = false
+    /** 打开键盘后的宽限期：此时间内一律忽略 ACTION_OUTSIDE。 */
+    private var imeGuardUntil = 0L
+    /** 编辑草稿：removeView / 误 rebuild 时保住用户已输入内容。 */
+    private var draftLabel = ""
+    private var draftUser = ""
+    private var draftPass = ""
 
     private val tick = object : Runnable {
         override fun run() {
@@ -135,7 +153,7 @@ class ToolboxOverlayService : Service() {
                 return START_NOT_STICKY
             }
         }
-        ToolboxController.onVaultAuthedListener = { handler.post { safeRebuild() } }
+        ToolboxController.onVaultAuthedListener = { handler.post { rebuild("vault_authed") } }
         handler.removeCallbacks(tick)
         handler.post(tick)
         // 系统杀进程后以 null intent 重启时，立刻尝试恢复气泡
@@ -195,8 +213,8 @@ class ToolboxOverlayService : Service() {
             return
         }
 
-        // 正在编辑或面板展开时绝不因短暂不可见而拆窗
-        if (expanded || mode == Mode.EDIT || hasFieldFocus()) {
+        // 编辑 / IME / 面板展开：绝不因「分身不可见」拆窗
+        if (expanded || isEditingUi()) {
             ensureView(force = root == null || root?.isAttachedToWindow != true)
             return
         }
@@ -204,7 +222,7 @@ class ToolboxOverlayService : Service() {
         val quietFor = now - lastSeenClientAt.coerceAtLeast(launchedAt)
         if (quietFor > STOP_AFTER_MS && !client) {
             logWatch("no clone for ${quietFor}ms; stopSelf")
-            ToolboxCrashLog.append(this, "INFO", "stopSelf quiet=${quietFor}ms")
+            ToolboxCrashLog.append(this, "INFO", "stopSelf reason=quiet quiet=${quietFor}ms")
             stopSelf()
             return
         }
@@ -213,8 +231,7 @@ class ToolboxOverlayService : Service() {
         if (quietFor > HIDE_AFTER_MS) {
             if (root != null) {
                 logWatch("clone quiet ${quietFor}ms; hide bubble (service stays)")
-                ToolboxCrashLog.append(this, "INFO", "hide bubble quiet=${quietFor}ms")
-                removeView()
+                hideOverlay("tick_hide quiet=${quietFor}ms")
             }
         }
     }
@@ -299,6 +316,7 @@ class ToolboxOverlayService : Service() {
     private fun ensureViewInner(force: Boolean) {
         if (root != null && root?.isAttachedToWindow == true && !force) return
         if (force && root != null) {
+            ToolboxCrashLog.append(this, "INFO", "ensureView force re-add reason=watchdog_or_attach mode=$mode pinned=$editSessionPinned")
             removeView()
         }
         if (root != null) return
@@ -358,10 +376,12 @@ class ToolboxOverlayService : Service() {
         bubbleView.setOnTouchListener(dragListener { toggle() })
         holder.setOnTouchListener { _, e ->
             if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                // 编辑中 / 输入框有焦点时：IME 弹出也会发 OUTSIDE，不能收起
-                if (mode == Mode.EDIT || hasFieldFocus()) {
+                // 键盘按键 / IME 区域 / 输入框焦点都会发 OUTSIDE，绝不能当「点窗外」
+                if (isEditingUi()) {
+                    ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=ime_or_edit pinned=$editSessionPinned mode=$mode")
                     return@setOnTouchListener true
                 }
+                ToolboxCrashLog.append(this, "INFO", "collapse reason=outside_tap")
                 collapse()
                 true
             } else false
@@ -381,7 +401,18 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    private fun hideOverlay(reason: String) {
+        ToolboxCrashLog.append(
+            this,
+            "INFO",
+            "hideOverlay reason=$reason expanded=$expanded mode=$mode pinned=$editSessionPinned focus=${hasFieldFocus()}",
+        )
+        removeView()
+    }
+
     private fun removeView() {
+        // 先保住草稿，再拆窗（看门狗重建编辑页时能恢复）
+        captureDraft()
         viewGen++
         cancelIdleDim()
         try {
@@ -456,6 +487,8 @@ class ToolboxOverlayService : Service() {
             expanded = false
             mode = Mode.TOOLS
             editingId = null
+            editSessionPinned = false
+            clearDraft()
             focusable(false)
             val panel = card
             val gen = viewGen
@@ -489,7 +522,13 @@ class ToolboxOverlayService : Service() {
         try {
             bubble?.visibility = if (expanded) View.GONE else View.VISIBLE
             card?.visibility = if (expanded) View.VISIBLE else View.GONE
-            if (expanded) safeRebuild()
+            // 编辑中禁止经由 applyVisibility 拆表单；空面板才补建
+            if (expanded) {
+                val empty = (card?.childCount ?: 0) == 0
+                if (mode != Mode.EDIT || empty) {
+                    rebuild(if (empty && mode == Mode.EDIT) "enter_edit" else "apply_visibility")
+                }
+            }
             val params = lp ?: return
             val view = root ?: return
             try {
@@ -497,8 +536,12 @@ class ToolboxOverlayService : Service() {
             } catch (t: Throwable) {
                 Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
                 ToolboxCrashLog.append(this, "ERROR", "updateViewLayout applyVisibility", t)
-                // 清掉引用，让看门狗重建；不要留下半残视图
-                removeView()
+                if (isEditingUi()) {
+                    ToolboxCrashLog.append(this, "WARN", "keep overlay after applyVisibility fail reason=ime_focus")
+                    armImeGuard()
+                } else {
+                    hideOverlay("apply_visibility_update_failed")
+                }
             }
         } catch (t: Throwable) {
             ToolboxCrashLog.append(this, "ERROR", "applyVisibility failed", t)
@@ -577,7 +620,8 @@ class ToolboxOverlayService : Service() {
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         // on=true：编辑要键盘；仍 NOT_TOUCH_MODAL，并 WATCH_OUTSIDE（由 handler 决定是否收起）
         // on=false：气泡或只读面板，NOT_FOCUSABLE
-        params.flags = if (on) {
+        // 不用 FLAG_ALT_FOCUSABLE_IM：与可聚焦窗口组合会反过来挡键盘。
+        val newFlags = if (on) {
             base or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
         } else if (expanded) {
@@ -587,14 +631,29 @@ class ToolboxOverlayService : Service() {
         } else {
             base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
+        // 相同 flags 时跳过 updateViewLayout，避免 HyperOS 上切焦点闪烁
+        if (params.flags == newFlags &&
+            params.softInputMode == WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN &&
+            view.isAttachedToWindow
+        ) {
+            if (on) armImeGuard()
+            return
+        }
+        params.flags = newFlags
         params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
         params.dimAmount = 0f
         try {
             if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+            if (on) armImeGuard()
         } catch (t: Throwable) {
             Log.w(TAG, "updateViewLayout in focusable failed", t)
             ToolboxCrashLog.append(this, "ERROR", "updateViewLayout focusable", t)
-            removeView()
+            if (isEditingUi() || on) {
+                ToolboxCrashLog.append(this, "WARN", "keep overlay after focusable fail reason=ime_focus")
+                armImeGuard()
+            } else {
+                hideOverlay("focusable_update_failed")
+            }
         }
     }
 
@@ -603,6 +662,46 @@ class ToolboxOverlayService : Service() {
         val b = userInput?.hasFocus() == true
         val c = passInput?.hasFocus() == true
         return a || b || c
+    }
+
+    /** 编辑会话、输入焦点或 IME 可见/宽限期内 —— 禁止收起与拆窗。 */
+    private fun isEditingUi(): Boolean =
+        mode == Mode.EDIT || editSessionPinned || hasFieldFocus() || isImeProbablyVisible()
+
+    private fun armImeGuard(ms: Long = 8_000L) {
+        imeGuardUntil = SystemClock.elapsedRealtime() + ms
+    }
+
+    private fun isImeProbablyVisible(): Boolean {
+        if (SystemClock.elapsedRealtime() < imeGuardUntil) return true
+        try {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            if (imm.isAcceptingText) return true
+        } catch (_: Throwable) {
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val insets = root?.rootWindowInsets
+                if (insets != null && insets.isVisible(android.view.WindowInsets.Type.ime())) return true
+            } catch (_: Throwable) {
+            }
+        }
+        return false
+    }
+
+    private fun captureDraft() {
+        try {
+            labelInput?.text?.toString()?.let { draftLabel = it }
+            userInput?.text?.toString()?.let { draftUser = it }
+            passInput?.text?.toString()?.let { draftPass = it }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun clearDraft() {
+        draftLabel = ""
+        draftUser = ""
+        draftPass = ""
     }
 
     private fun hideIme() {
@@ -614,12 +713,27 @@ class ToolboxOverlayService : Service() {
         }
     }
 
-    private fun safeRebuild() = rebuild()
+    private fun safeRebuild() = rebuild("safe")
 
-    private fun rebuild() {
+    /**
+     * @param reason enter_edit / force_edit / save_done / cancel_edit / apply_visibility / …
+     * 编辑页已挂着输入框时，非 enter_edit/force_edit 的回调一律跳过，避免打字闪烁。
+     */
+    private fun rebuild(reason: String = "unspecified") {
         try {
             val panel = card ?: return
             if (!expanded) return
+            val editAttached = mode == Mode.EDIT && (
+                passInput?.isAttachedToWindow == true ||
+                    userInput?.isAttachedToWindow == true ||
+                    labelInput?.isAttachedToWindow == true
+                )
+            if (editAttached && reason != "enter_edit" && reason != "force_edit") {
+                Log.i(TAG, "skip rebuild during edit reason=$reason")
+                ToolboxCrashLog.append(this, "INFO", "skip rebuild during edit reason=$reason")
+                return
+            }
+            if (mode == Mode.EDIT) captureDraft()
             panel.removeAllViews()
             when (mode) {
                 Mode.TOOLS -> buildTools(panel)
@@ -627,8 +741,8 @@ class ToolboxOverlayService : Service() {
                 Mode.EDIT -> buildEdit(panel)
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "rebuild failed", t)
-            ToolboxCrashLog.append(this, "ERROR", "rebuild mode=$mode", t)
+            Log.w(TAG, "rebuild failed reason=$reason", t)
+            ToolboxCrashLog.append(this, "ERROR", "rebuild mode=$mode reason=$reason", t)
         }
     }
 
@@ -759,13 +873,15 @@ class ToolboxOverlayService : Service() {
         focusable(false)
         panel.addView(header("账号密码本", "返回") {
             mode = Mode.TOOLS
-            rebuild()
+            rebuild("vault_back")
         })
         val entries = vaultCache.get()
         panel.addView(button("添加账号") {
             editingId = null
+            clearDraft()
             mode = Mode.EDIT
-            rebuild()
+            editSessionPinned = true
+            rebuild("enter_edit")
         })
         val scroll = ScrollView(this)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -859,8 +975,10 @@ class ToolboxOverlayService : Service() {
             }
             more.addView(link("编辑") {
                 editingId = e.id
+                clearDraft()
                 mode = Mode.EDIT
-                rebuild()
+                editSessionPinned = true
+                rebuild("enter_edit")
             })
             more.addView(link("删除") { confirmDelete(e) })
             addView(more)
@@ -927,6 +1045,8 @@ class ToolboxOverlayService : Service() {
 
     @SuppressLint("SetTextI18n")
     private fun buildEdit(panel: LinearLayout) {
+        editSessionPinned = true
+        armImeGuard()
         focusable(true)
         val existing = editingId?.let { id ->
             vaultCache.get().firstOrNull { it.id == id }
@@ -934,13 +1054,23 @@ class ToolboxOverlayService : Service() {
         panel.addView(header(if (existing == null) "添加账号" else "编辑账号", "取消") {
             hideIme()
             mode = Mode.VAULT
+            editSessionPinned = false
+            clearDraft()
             focusable(false)
-            rebuild()
+            rebuild("cancel_edit")
         })
         panel.addView(body("名称、用户名和密码会保存在本机，方便一键填入。"))
-        labelInput = field("名称，例如主号", existing?.label ?: "")
-        userInput = field("用户名 / 手机 / 学号", existing?.username ?: "")
-        passInput = field("密码", existing?.password ?: "", password = true)
+        // 草稿优先：误 rebuild / 看门狗重建时不丢用户正在输入的内容
+        val labelSeed = draftLabel.ifEmpty { existing?.label ?: "" }
+        val userSeed = draftUser.ifEmpty { existing?.username ?: "" }
+        val passSeed = if (draftPass.isNotEmpty() || draftLabel.isNotEmpty() || draftUser.isNotEmpty()) {
+            draftPass
+        } else {
+            existing?.password ?: ""
+        }
+        labelInput = field("名称，例如主号", labelSeed)
+        userInput = field("用户名 / 手机 / 学号", userSeed)
+        passInput = field("密码", passSeed, password = true)
         panel.addView(labelInput)
         panel.addView(userInput)
         panel.addView(passInput)
@@ -1016,6 +1146,8 @@ class ToolboxOverlayService : Service() {
                     "ok" -> {
                         hideIme()
                         mode = Mode.VAULT
+                        editSessionPinned = false
+                        clearDraft()
                         focusable(false)
                         refreshVaultAsync(thenRebuild = true)
                     }
@@ -1089,7 +1221,12 @@ class ToolboxOverlayService : Service() {
             }
             vaultCache.set(list)
             if (thenRebuild || (expanded && mode == Mode.VAULT)) {
-                handler.post { if (expanded) rebuild() }
+                handler.post {
+                    if (!expanded) return@post
+                    // 编辑中绝不因列表刷新拆表单
+                    if (mode == Mode.EDIT) return@post
+                    rebuild(if (thenRebuild) "vault_refresh" else "vault_async")
+                }
             }
         }
     }
@@ -1103,7 +1240,10 @@ class ToolboxOverlayService : Service() {
                 if (pkg == packageName) {
                     resolvedLabel = label
                     resolvedIcon = icon
-                    if (expanded) rebuild()
+                    // 编辑打字时禁止重建（这是 1.3.9「输入密码闪烁消失」的主因之一）
+                    if (expanded && mode != Mode.EDIT && !editSessionPinned) {
+                        rebuild("app_info")
+                    }
                     try {
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         nm.notify(NOTIFICATION_ID, notification())
@@ -1125,7 +1265,7 @@ class ToolboxOverlayService : Service() {
             val l = appLabelSync(packageName)
             handler.post {
                 labelMemo[packageName] = l
-                if (expanded && mode == Mode.VAULT) rebuild()
+                if (expanded && mode == Mode.VAULT && !editSessionPinned) rebuild("label_memo")
             }
         }
         return packageName
@@ -1240,8 +1380,26 @@ class ToolboxOverlayService : Service() {
             } else {
                 InputType.TYPE_CLASS_TEXT
             }
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    if (mode == Mode.EDIT) captureDraft()
+                }
+            })
             setOnFocusChangeListener { _, has ->
-                if (has) focusable(true)
+                if (has) {
+                    editSessionPinned = true
+                    armImeGuard()
+                    // 只在需要时切窗口 flags；相同 flags 会跳过 updateViewLayout
+                    focusable(true)
+                    captureDraft()
+                } else {
+                    // IME 切换字段时会短暂失焦；推迟捕获，避免把空值盖住草稿
+                    handler.postDelayed({
+                        if (mode == Mode.EDIT) captureDraft()
+                    }, 120)
+                }
             }
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             gap.topMargin = dp(8)
