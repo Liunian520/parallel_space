@@ -24,11 +24,11 @@ void main() {
   test('版本号只加最后一位：1.3.11 → 12311', () {
     expect(kAppVersionName, '1.3.11');
     expect(kAppVersionCode, 12311);
-    expect(encodeVersionCode(1, 3, 10), kAppVersionCode);
+    expect(encodeVersionCode(1, 3, 11), kAppVersionCode);
     expect(versionCodeFromName('1.3.11'), 12311);
-    expect(encodeVersionCode(1, 3, 10), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 10), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 10), greaterThan(12309));
+    expect(encodeVersionCode(1, 3, 11), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 11), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 11), greaterThan(12310));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
