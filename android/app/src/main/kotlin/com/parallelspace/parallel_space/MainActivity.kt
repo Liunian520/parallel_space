@@ -181,7 +181,7 @@ class MainActivity : FlutterFragmentActivity() {
                         CloneWidgetProvider.save(this, (call.argument<List<Map<String, Any?>>>("items") ?: emptyList()))
                         result.success(null)
                     }
-                    else -> result.notImplemented()
+                    else -> if (!ToolboxController.handle(this, call, result)) result.notImplemented()
                 }
             } catch (e: Exception) {
                 result.error("native_error", e.message, null)

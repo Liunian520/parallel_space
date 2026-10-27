@@ -330,4 +330,33 @@ class NativeBridge {
 
   // ---------------- 桌面小组件 ----------------
   static Future<void> updateWidget(List<Map<String, Object?>> items) => _call('updateWidget', {'items': items});
+
+  // ---------------- 工具箱 / 密码本 / 机型适配 ----------------
+  static Future<String> setToolboxEnabled(bool on) async => await _call<String>('setToolboxEnabled', {'on': on}) ?? 'error';
+
+  static Future<bool?> overlayGranted() => _call<bool>('overlayGranted');
+
+  static Future<String?> toolboxCurrentPackage() => _call<String>('toolboxCurrentPackage');
+
+  static Future<Map?> compatReport() => _call<Map>('compatReport');
+
+  /// 'rom' | 'details' | 'ok' | 'requested' | 'error' | 'none'
+  static Future<String> compatOpen(String id) async => await _call<String>('compatOpen', {'id': id}) ?? 'error';
+
+  static Future<String> openUrl(String url) async => await _call<String>('openUrl', {'url': url}) ?? 'error';
+
+  /// 'ok' | 'cancelled' | 'need_lock' | 'error'
+  static Future<String> vaultUnlock() async => await _call<String>('vaultUnlock') ?? 'error';
+
+  static Future<void> vaultLock() => _call('vaultLock');
+
+  static Future<Map?> vaultList() => _call<Map>('vaultList');
+
+  /// 'ok' 或错误说明。
+  static Future<String?> vaultUpsert(Map<String, String> entry) => _call<String>('vaultUpsert', entry);
+
+  static Future<String?> vaultDelete(String id) => _call<String>('vaultDelete', {'id': id});
+
+  /// 'filled' | 'copied' | 'copied_no_field' | 'locked' | 'need_auth' | 'error'
+  static Future<String> vaultFill(String id) async => await _call<String>('vaultFill', {'id': id}) ?? 'error';
 }

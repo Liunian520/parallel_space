@@ -17,6 +17,7 @@ class SettingsStore extends ChangeNotifier {
     if (seedV != null) seed = Color(seedV);
     reduceEffects = get<bool>('s.fx') ?? reduceEffects;
     autoCheckUpdate = get<bool>('s.updAuto') ?? autoCheckUpdate;
+    toolboxOverlay = get<bool>('s.toolbox') ?? toolboxOverlay;
     // 1.1.x 的模拟通知 / 免打扰设置已移除
     for (final k in const ['s.nt', 's.badge', 's.silent', 's.dnd', 's.dndS', 's.dndE']) {
       _prefs.remove(k);
@@ -35,6 +36,9 @@ class SettingsStore extends ChangeNotifier {
   /// 启动时自动检查更新（最多 12 小时一次）。
   bool autoCheckUpdate = true;
 
+  /// 分身在前台时显示工具箱悬浮窗。默认关闭，避免没授权就拉起前台服务。
+  bool toolboxOverlay = false;
+
   static const seedOptions = <Color>[
     Color(0xFF2F7CF6), // 蓝
     Color(0xFF00BCD4), // 青
@@ -51,7 +55,8 @@ class SettingsStore extends ChangeNotifier {
       ..setBool('s.dyn', useDynamicColor)
       ..setInt('s.seed', seed.toARGB32())
       ..setBool('s.fx', reduceEffects)
-      ..setBool('s.updAuto', autoCheckUpdate);
+      ..setBool('s.updAuto', autoCheckUpdate)
+      ..setBool('s.toolbox', toolboxOverlay);
   }
 
   void set(void Function(SettingsStore s) fn) {
@@ -68,6 +73,7 @@ class SettingsStore extends ChangeNotifier {
         'seed': seed.toARGB32(),
         'fx': reduceEffects,
         'updAuto': autoCheckUpdate,
+        'toolbox': toolboxOverlay,
       };
 
   void applyBackup(Map<String, dynamic> m) => set((s) {
@@ -80,5 +86,6 @@ class SettingsStore extends ChangeNotifier {
         if (m['seed'] is int) s.seed = Color(m['seed'] as int);
         if (m['fx'] is bool) s.reduceEffects = m['fx'] as bool;
         if (m['updAuto'] is bool) s.autoCheckUpdate = m['updAuto'] as bool;
+        if (m['toolbox'] is bool) s.toolboxOverlay = m['toolbox'] as bool;
       });
 }

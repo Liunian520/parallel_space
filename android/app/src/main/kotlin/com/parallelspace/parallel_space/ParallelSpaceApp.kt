@@ -16,5 +16,9 @@ class ParallelSpaceApp : Application() {
     override fun onCreate() {
         super.onCreate()
         VirtualEngine.create(this)
+        try {
+            ToolboxController.install(this)
+        } catch (_: Throwable) {
+        }
     }
 }

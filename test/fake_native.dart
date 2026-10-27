@@ -37,6 +37,11 @@ class FakeNative {
 
   /// launchWorkApp 时工作资料中没有该应用（模拟需先复制）。
   final Set<String> missingInWork = {};
+  bool overlayGranted = false;
+  String currentPackage = '';
+  String vaultUnlockResult = 'ok';
+  bool vaultOpen = false;
+  final List<Map<String, Object?>> vault = [];
 
   Iterable<String> get methods => calls.map((c) => c.method);
 
@@ -171,6 +176,54 @@ class FakeNative {
         return null;
       case 'startMock':
         return 'ok';
+      case 'setToolboxEnabled':
+      case 'vaultLock':
+        if (call.method == 'vaultLock') vaultOpen = false;
+        return 'ok';
+      case 'overlayGranted':
+        return overlayGranted;
+      case 'toolboxCurrentPackage':
+        return currentPackage;
+      case 'compatReport':
+        return {
+          'rom': rom,
+          'romLabel': rom == 'hyperos' ? '小米 HyperOS' : '原生 Android',
+          'sdk': 35,
+          'release': '15',
+          'abi': 'arm64-v8a',
+          'items': [
+            {'id': 'overlay', 'title': '悬浮窗', 'status': 'off', 'detail': '尚未允许显示悬浮窗', 'canOpen': true},
+            {'id': 'abi', 'title': '64 位', 'status': 'ok', 'detail': '当前进程是 64 位', 'canOpen': false},
+          ],
+        };
+      case 'compatOpen':
+      case 'openUrl':
+        return 'ok';
+      case 'vaultUnlock':
+        if (vaultUnlockResult != 'ok') return vaultUnlockResult;
+        vaultOpen = true;
+        return 'ok';
+      case 'vaultList':
+        return {'locked': !vaultOpen, 'entries': vaultOpen ? vault : <Map<String, Object?>>[]};
+      case 'vaultUpsert':
+        if (!vaultOpen) return 'locked';
+        final id = a['id'] is String && (a['id'] as String).isNotEmpty ? a['id'] as String : 'id${vault.length + 1}';
+        vault.removeWhere((e) => e['id'] == id);
+        vault.add({
+          'id': id,
+          'pkg': a['pkg'] ?? '',
+          'clone': a['clone'] ?? '',
+          'label': a['label'] is String && (a['label'] as String).trim().isNotEmpty ? a['label'] : '未命名',
+          'user': a['user'] ?? '',
+          'pass': a['pass'] ?? '',
+          'note': '',
+        });
+        return 'ok';
+      case 'vaultDelete':
+        vault.removeWhere((e) => e['id'] == a['id']);
+        return 'ok';
+      case 'vaultFill':
+        return 'copied';
       default:
         return null;
     }

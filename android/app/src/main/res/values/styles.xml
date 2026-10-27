@@ -7,4 +7,12 @@
     <style name="NormalTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <!-- 生物识别跳板：透明，不留在最近任务里。主界面本身仍然出现在最近任务。 -->
+    <style name="Theme.VaultAuth" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

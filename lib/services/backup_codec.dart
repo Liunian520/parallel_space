@@ -36,7 +36,7 @@ class BackupCodec {
   /// 设置中允许导出/导入的键（白名单，防止敏感键混入）。
   static const settingKeys = {
     'title', 'theme', 'dyn', 'seed', 'fx',
-    'updAuto',
+    'updAuto', 'toolbox',
   };
 
   static String encode(BackupData d, {DateTime? now}) {

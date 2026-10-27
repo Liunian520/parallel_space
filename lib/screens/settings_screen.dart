@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config/app_version.dart';
 import '../services/backup_service.dart';
 import '../services/update_service.dart';
 import '../widgets/update_sheet.dart';
@@ -12,16 +13,14 @@ import '../state/settings_store.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/pressable.dart';
 import '../widgets/section_tile.dart';
+import 'compat_screen.dart';
 import 'private_space_screen.dart';
+import 'toolbox_screen.dart';
 import 'usage_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, this.embedded = false});
   final bool embedded;
-
-  static const version = '1.3.3';
-
-  static String _versionCodeLabel() => 'build 10303';
 
   void _push(BuildContext context, Widget page) => Navigator.of(context).push(CupertinoPageRoute(builder: (_) => page));
 
@@ -50,7 +49,25 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => _push(context, const PrivateSpaceScreen()),
             ),
           ]),
+          SectionCard(title: '工具箱', children: [
+            GlassTile(
+              icon: Icons.widgets_rounded,
+              title: '工具箱',
+              subtitle: '分身运行时的悬浮小窗，第一项是账号密码本',
+              trailing: Switch(
+                value: st.toolboxOverlay,
+                onChanged: (v) => applyToolboxEnabled(context, v),
+              ),
+              onTap: () => _push(context, const ToolboxScreen()),
+            ),
+          ]),
           SectionCard(title: '系统适配', children: [
+            GlassTile(
+              icon: Icons.phonelink_setup_rounded,
+              title: '机型适配检查',
+              subtitle: '悬浮窗、无障碍、电池、快捷方式和系统版本',
+              onTap: () => _push(context, const CompatScreen()),
+            ),
             GlassTile(
               icon: Icons.add_to_home_screen_rounded,
               title: '桌面快捷方式权限',
@@ -200,7 +217,7 @@ class SettingsScreen extends StatelessWidget {
             GlassTile(
               icon: Icons.upgrade_rounded,
               title: '检查更新',
-              subtitle: '当前版本 $version（${_versionCodeLabel()}）',
+              subtitle: '当前版本 $kAppVersionName（build $kAppVersionCode）',
               onTap: () => checkForUpdates(context, force: true),
             ),
           ]),
@@ -208,11 +225,11 @@ class SettingsScreen extends StatelessWidget {
             GlassTile(
               icon: Icons.info_outline_rounded,
               title: '关于平行空间',
-              subtitle: '版本 $version · 虚拟引擎分身',
+              subtitle: '版本 $kAppVersionName · 虚拟引擎分身',
               onTap: () => showAboutDialog(
                 context: context,
                 applicationName: '平行空间',
-                applicationVersion: version,
+                applicationVersion: kAppVersionName,
                 applicationIcon: const Icon(Icons.layers_rounded, size: 40),
                 children: const [
                   Text('分身由进程内虚拟引擎（NewBlackbox/Bcore）运行，不依赖系统工作资料。'
@@ -223,6 +240,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             const GlassTile(icon: Icons.shield_outlined, title: '隐私政策', subtitle: '所有数据仅存储于本机，不上传任何服务器'),
           ]),
+          const _OpenSourceFooter(),
         ],
       ),
     );
@@ -280,6 +298,38 @@ class SettingsScreen extends StatelessWidget {
         WorkState.inside => '当前在工作资料内',
         WorkState.unknown => '检测中',
       };
+}
+
+class _OpenSourceFooter extends StatelessWidget {
+  const _OpenSourceFooter();
+
+  static const _url = 'https://github.com/Liunian520/parallel_space';
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 28, 8, 12),
+      child: Column(children: [
+        Text('本项目开源', style: tt.titleMedium),
+        const SizedBox(height: 4),
+        Text('作者 流年似水', style: tt.bodyMedium?.copyWith(color: s.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        InkWell(
+          onTap: () async {
+            final r = await NativeBridge.openUrl(_url);
+            if (context.mounted && r != 'ok') showGlassSnack(context, '无法打开链接');
+          },
+          child: Text(
+            _url,
+            textAlign: TextAlign.center,
+            style: tt.bodyMedium?.copyWith(color: s.primary, decoration: TextDecoration.underline),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 

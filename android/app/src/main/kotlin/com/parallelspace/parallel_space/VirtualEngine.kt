@@ -18,6 +18,9 @@ object VirtualEngine {
     private const val USER = 0
 
     @Volatile
+    private var appCtx: Context? = null
+
+    @Volatile
     private var ready = false
 
     @Volatile
@@ -30,6 +33,7 @@ object VirtualEngine {
     val error: String? get() = lastError
 
     fun attach(base: Context) {
+        appCtx = base.applicationContext ?: base
         try {
             BlackBoxCore.get().doAttachBaseContext(base, object : ClientConfiguration() {
                 override fun getHostPackageName(): String = base.packageName
@@ -158,7 +162,15 @@ object VirtualEngine {
                 return mapOf("r" to "not_found", "detail" to "not cloned")
             }
             val ok = BlackBoxCore.get().launchApk(pkg, USER)
-            if (ok) mapOf("r" to "ok") else mapOf("r" to "error", "detail" to "launchApk returned false")
+            if (ok) {
+                try {
+                    appCtx?.let { ToolboxController.onCloneLaunched(it, pkg) }
+                } catch (_: Throwable) {
+                }
+                mapOf("r" to "ok")
+            } else {
+                mapOf("r" to "error", "detail" to "launchApk returned false")
+            }
         } catch (t: Throwable) {
             mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")
         }

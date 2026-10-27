@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.INTERACT_ACROSS_PROFILES"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <!-- 用量统计：需用户在系统设置中手动授予 -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
@@ -134,6 +137,34 @@
         </receiver>
 
         <service
+            android:name=".ToolboxOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="分身运行时显示可收起的工具箱悬浮窗" />
+        </service>
+
+        <service
+            android:name=".ToolboxAccessibilityService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/toolbox_accessibility" />
+        </service>
+
+        <activity
+            android:name=".VaultAuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.VaultAuth" />
+
+        <service
             android:name=".MockLocationService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
@@ -194,6 +225,10 @@
         <intent>
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
         <intent>
             <action android:name="android.app.action.PROVISION_MANAGED_PROFILE"/>

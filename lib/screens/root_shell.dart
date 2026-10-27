@@ -46,6 +46,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _autoFreeze();
       if (!mounted) return;
       final settings = context.read<SettingsStore>();
+      await NativeBridge.setToolboxEnabled(settings.toolboxOverlay);
+      if (!mounted) return;
       final upd = context.read<UpdateService>();
       upd.autoCheck = settings.autoCheckUpdate;
       if (settings.autoCheckUpdate && upd.dueForAutoCheck) {

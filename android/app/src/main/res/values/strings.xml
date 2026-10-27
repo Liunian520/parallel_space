@@ -3,4 +3,5 @@
     <string name="widget_desc">快速打开平行空间中的分身</string>
     <string name="tile_label">虚拟定位</string>
     <string name="widget_empty">还没有分身，点此打开平行空间</string>
+    <string name="toolbox_a11y_desc">平行空间的账号密码本。只有在你点「填入」时，才会把用户名和密码写入当前焦点所在的输入框或识别到的密码框。不会记录按键，也不会保存屏幕内容。</string>
 </resources>
