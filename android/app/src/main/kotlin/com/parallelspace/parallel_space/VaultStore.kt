@@ -7,8 +7,8 @@ import java.io.File
 import java.util.UUID
 
 /**
- * 账号密码本：明文 JSON 存在 SharedPreferences，方便一键填入，不做生物识别门禁。
- * 若本机还有 1.3.4/1.3.5 的 Keystore 加密文件 `vault.enc`，能解开就迁过来。
+ * 账号密码本：明文 JSON 存在 filesDir/vault_plain.json（跨进程），并备份 SharedPreferences。
+ * 方便一键填入，不做生物识别门禁。旧版 vault.enc 能解开就迁过来。
  */
 object VaultStore {
     data class Entry(
@@ -40,7 +40,7 @@ object VaultStore {
     private val lock = Any()
     private var cache: MutableList<Entry>? = null
 
-    /** 兼容旧调用：明文存储不再需要会话，这里只清内存缓存。 */
+    /** 清内存缓存，强制下次 list/find 从 vault_plain.json 重读（跨进程写入后调用）。 */
     fun lock() {
         synchronized(lock) { cache = null }
     }
@@ -83,34 +83,48 @@ object VaultStore {
 
     class Locked : IllegalStateException("locked")
 
+    private fun vaultFile(ctx: Context): File = File(ctx.applicationContext.filesDir, FILE_JSON)
+
+    private fun parseEntries(raw: String?): MutableList<Entry> {
+        val items = mutableListOf<Entry>()
+        if (raw.isNullOrBlank()) return items
+        try {
+            val root = JSONObject(raw)
+            val arr = root.optJSONArray("entries") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                val pkg = o.optString("pkg")
+                if (id.isBlank() || pkg.isBlank()) continue
+                items += Entry(
+                    id = id,
+                    pkg = pkg,
+                    cloneUid = o.optString("clone"),
+                    label = o.optString("label").ifBlank { "未命名" },
+                    username = o.optString("user"),
+                    password = o.optString("pass"),
+                    note = o.optString("note"),
+                )
+            }
+        } catch (_: Throwable) {
+        }
+        return items
+    }
+
     private fun load(ctx: Context): MutableList<Entry> {
         cache?.let { return it }
         migrateIfNeeded(ctx)
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_JSON, null)
-        val items = mutableListOf<Entry>()
-        if (!raw.isNullOrBlank()) {
-            try {
-                val root = JSONObject(raw)
-                val arr = root.optJSONArray("entries") ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    val id = o.optString("id")
-                    val pkg = o.optString("pkg")
-                    if (id.isBlank() || pkg.isBlank()) continue
-                    items += Entry(
-                        id = id,
-                        pkg = pkg,
-                        cloneUid = o.optString("clone"),
-                        label = o.optString("label").ifBlank { "未命名" },
-                        username = o.optString("user"),
-                        password = o.optString("pass"),
-                        note = o.optString("note"),
-                    )
-                }
+        // 文件是跨进程真相源（编辑页在 :toolbox_edit）；prefs 仅作兼容备份
+        val file = vaultFile(ctx)
+        val raw = when {
+            file.isFile && file.length() > 0L -> try {
+                file.readText()
             } catch (_: Throwable) {
+                null
             }
+            else -> ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_JSON, null)
         }
+        val items = parseEntries(raw)
         cache = items
         return items
     }
@@ -130,10 +144,25 @@ object VaultStore {
             )
         }
         val json = JSONObject().put("v", 2).put("entries", arr).toString()
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_JSON, json)
-            .apply()
+        val app = ctx.applicationContext
+        try {
+            val file = vaultFile(app)
+            val tmp = File(app.filesDir, "$FILE_JSON.tmp")
+            tmp.writeText(json)
+            if (!tmp.renameTo(file)) {
+                file.writeText(json)
+                tmp.delete()
+            }
+        } catch (_: Throwable) {
+        }
+        // 同步备份到 prefs（同进程读仍可用）；commit 方便主进程尽快看见
+        try {
+            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_JSON, json)
+                .commit()
+        } catch (_: Throwable) {
+        }
         cache = items
     }
 

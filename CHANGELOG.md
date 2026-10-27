@@ -1,6 +1,27 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.10（versionCode 12310），下一次是 1.3.11（12311）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.11（versionCode 12311），下一次是 1.3.12（12312）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.11] - 2026-10-28
+
+### 修复
+
+- **输入密码时工具箱闪烁后消失（根因）**：诊断日志显示序列为 `ignore outside_tap reason=ime_or_edit` → `tick stop: enabled/overlay lost` → `overlay onDestroy`。**不是崩溃**，而是 `tick` 在 HyperOS（sdk 36）上读到 `enabled` 或 `Settings.canDrawOverlays` 瞬假后立刻 `stopSelf`。1.3.11：
+  - 单次否定绝不停服；需连续 ≥3 次且跨度 ≥10 秒，且未打开编辑页/面板。
+  - 悬浮窗权限用 Settings + `AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW` 交叉验证，两者都否才算真正丢失。
+  - 每次否定写入诊断日志（`enabled=` / `settingsOverlay=` / `appOpsOverlay=`）。
+  - 用户关闭开关：`SharedPreferences.commit()` + 显式 `ACTION_USER_STOP`，不再只靠 tick 轮询。
+
+### 架构
+
+- **悬浮窗永久 `FLAG_NOT_FOCUSABLE`**，不再承载任何 `EditText`（避免 IME/焦点切 flags）。
+- **添加/编辑账号**改走独立 `ToolboxEditActivity`（`:toolbox_edit` 进程、毛玻璃底部卡片、密码可见切换）；保存后广播刷新悬浮窗列表；编辑页崩溃不会拖垮主进程悬浮窗服务。
+- 密码本改为 `filesDir/vault_plain.json` 跨进程持久化（仍备份 SharedPreferences）。
+
+### 其他
+
+- 版本 `1.3.11+12311`。
+- 保留 1.3.9/1.3.10 的崩溃日志、`reason=` 隐藏日志、START_STICKY、看门狗。
 
 ## [1.3.10] - 2026-10-27
 

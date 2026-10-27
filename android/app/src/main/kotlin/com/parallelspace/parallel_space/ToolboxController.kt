@@ -70,13 +70,30 @@ object ToolboxController {
     }
 
     fun enabled(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
+        ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLED, false)
 
+    /**
+     * 开关写入用 [SharedPreferences.Editor.commit] 同步落盘，避免 tick 读到旧值。
+     * 关闭时发 [ToolboxOverlayService.ACTION_USER_STOP]，不要只靠 tick 轮询。
+     */
     fun setEnabled(ctx: Context, on: Boolean) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_ENABLED, on).apply()
+        val app = ctx.applicationContext
+        val ok = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ENABLED, on)
+            .commit()
+        ToolboxCrashLog.append(app, "INFO", "setEnabled on=$on commit=$ok")
         if (!on) {
             try {
-                ctx.stopService(Intent(ctx, ToolboxOverlayService::class.java))
+                val stop = Intent(app, ToolboxOverlayService::class.java)
+                    .setAction(ToolboxOverlayService.ACTION_USER_STOP)
+                app.startService(stop)
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(app, "WARN", "ACTION_USER_STOP startService failed", t)
+            }
+            try {
+                app.stopService(Intent(app, ToolboxOverlayService::class.java))
             } catch (_: Throwable) {
             }
         }

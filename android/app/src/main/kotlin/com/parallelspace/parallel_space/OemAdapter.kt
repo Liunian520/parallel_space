@@ -529,11 +529,45 @@ object OemAdapter {
         val canOpen: Boolean,
     )
 
-    fun canDrawOverlay(ctx: Context): Boolean = try {
+    /** Settings 结果；HyperOS 在 IME/焦点切换时偶发瞬假。 */
+    fun settingsCanDrawOverlay(ctx: Context): Boolean = try {
         Settings.canDrawOverlays(ctx)
     } catch (_: Throwable) {
         false
     }
+
+    /** AppOps SYSTEM_ALERT_WINDOW；与 Settings 交叉验证。 */
+    fun overlayAppOpsAllowed(ctx: Context): Boolean = try {
+        val ops = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= 29) {
+            ops.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                android.os.Process.myUid(),
+                ctx.packageName,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ops.checkOpNoThrow(
+                AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                android.os.Process.myUid(),
+                ctx.packageName,
+            )
+        }
+        mode == AppOpsManager.MODE_ALLOWED
+    } catch (_: Throwable) {
+        false
+    }
+
+    /**
+     * 任一来源为真即视为有权限（偏向保活，避免 HyperOS 瞬假拆服务）。
+     * 真正要停服务时请用 [overlayClearlyDenied]。
+     */
+    fun canDrawOverlay(ctx: Context): Boolean =
+        settingsCanDrawOverlay(ctx) || overlayAppOpsAllowed(ctx)
+
+    /** Settings 与 AppOps 都否定时才算真正丢了悬浮窗权限。 */
+    fun overlayClearlyDenied(ctx: Context): Boolean =
+        !settingsCanDrawOverlay(ctx) && !overlayAppOpsAllowed(ctx)
 
     fun accessibilityOn(ctx: Context): Boolean {
         if (ToolboxAccessibilityService.instance != null) return true
