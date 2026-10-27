@@ -60,6 +60,12 @@ class SettingsScreen extends StatelessWidget {
               ),
               onTap: () => _push(context, const ToolboxScreen()),
             ),
+            GlassTile(
+              icon: Icons.bug_report_rounded,
+              title: '工具箱诊断日志',
+              subtitle: '悬浮窗消失时可查看、复制或分享最近日志',
+              onTap: () => _push(context, const ToolboxCrashLogScreen()),
+            ),
           ]),
           SectionCard(title: '系统适配', children: [
             GlassTile(

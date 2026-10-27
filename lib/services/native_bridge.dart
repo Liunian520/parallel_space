@@ -384,4 +384,10 @@ class NativeBridge {
   static Future<bool> a11yGuideSeen() async => await _call<bool>('a11yGuideSeen') ?? false;
 
   static Future<void> a11yGuideMark() => _call('a11yGuideMark');
+
+  static Future<String> toolboxCrashLog() async => await _call<String>('toolboxCrashLog') ?? '（无日志）';
+
+  static Future<String> toolboxCrashLogClear() async => await _call<String>('toolboxCrashLogClear') ?? 'error';
+
+  static Future<String> toolboxCrashLogShare() async => await _call<String>('toolboxCrashLogShare') ?? 'error';
 }

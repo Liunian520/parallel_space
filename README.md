@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.8-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.9-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -62,7 +62,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.8+12308**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.9+12309**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -70,9 +70,9 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.8`（versionCode `12308`），下一次是 `1.3.9`（`12309`）。
+只把修订号加 1：当前 `1.3.9`（versionCode `12309`），下一次是 `1.3.10`（`12310`）。
 
-1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.8→12308）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
+1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.9→12309）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
 每次改版本，同时更新：
 
@@ -114,9 +114,9 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 
 小米的桌面快捷方式是 AppOps **10017**。到 **设置 → 机型适配检查 → 桌面快捷方式**，或 **桌面快捷方式权限**。vivo / OPPO 没有稳定的读取接口，需要自己在权限页里打开。打不开厂商页时会退回应用详情，再退回系统设置。
 
-**悬浮窗不出现**
+**悬浮窗不出现 / 分身还在小球却没了**
 
-先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。分身进程（`:p0`、`:p1` …）不在前台时，小窗会收起。
+先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。1.3.9 起会用 `/proc` 兜底识别 `:p0`、`:p1` …，并在打开分身后较长时间内保持气泡；若仍消失，到 **设置 → 工具箱诊断日志** 复制内容反馈。
 
 **无障碍服务过一段时间自己关了**
 
@@ -148,4 +148,4 @@ HyperOS 的「应用双开」不是工作资料，本应用也不依赖它。引
 
 **工具箱把整屏糊住、分身点不了**
 
-1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。1.3.7 进一步修了编辑时气泡被误拆、键盘弹出导致面板消失的问题，并改为 START_STICKY + 看门狗自动恢复。1.3.8 重做了气泡/面板视觉（贴边半隐、回弹吸附、Material You），并修好了悬浮窗权限跳转。
+1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。1.3.7 进一步修了编辑时气泡被误拆、键盘弹出导致面板消失的问题，并改为 START_STICKY + 看门狗自动恢复。1.3.8 重做了气泡/面板视觉（贴边半隐、回弹吸附、Material You），并修好了悬浮窗权限跳转。1.3.9 修了 HyperOS 上进程列表空导致小球误摘，并加了诊断日志。

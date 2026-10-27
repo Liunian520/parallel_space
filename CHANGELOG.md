@@ -1,6 +1,28 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.8（versionCode 12308），下一次是 1.3.9（12309）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.9（versionCode 12309），下一次是 1.3.10（12310）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.9] - 2026-10-27
+
+### 修复
+
+- **工具箱小球在分身里又消失**：HyperOS（红米 K80 等）上 `getRunningAppProcesses` 经常看不到虚拟引擎的 `:pN` 进程，旧逻辑会在约 20 秒后误判「分身已退出」并 `removeView`。1.3.9 增加 `/proc/<pid>/cmdline` 兜底识别同包 `:p*`，并在打开分身后 `STICKY_MS`（15 分钟）内即使进程列表为空也保持气泡；隐藏/停止阈值大幅放宽。
+- **悬浮窗操作全面防御**：`addView` / `updateViewLayout` / `removeView` / `rebuild` / 展开收起动画全部 try/catch；动画带视图代数，避免旧 `withEndAction` 打到已拆除的窗口；半隐贴边只藏 1/3，不再看起来像消失。
+- **无障碍填入更稳**：树遍历限深 48、限节点 250；节点 recycle 更保守；`SET_TEXT`/粘贴时的短 sleep 永不在主线程；主线程调用会转到后台执行，降低 ANR / 服务被杀概率。
+
+### 新增
+
+- **工具箱诊断日志**：崩溃与看门狗事件写入应用私有目录 `toolbox_crash.log`；设置 / 工具箱页可查看、复制、分享、清空，方便无 logcat 时定位。
+- **未捕获异常自动拉回**：工具箱进程装了专用 UncaughtExceptionHandler，FATAL 落盘后用 AlarmManager 约 800ms 再启悬浮窗服务；配合 `START_STICKY` 双保险。
+
+### 变更
+
+- 版本 `1.3.9+12309`。
+
+### 说明
+
+- 仍需悬浮窗权限；一键填入仍建议开启无障碍，否则退回复制粘贴。
+- 虚拟引擎、`blackreflection` / `black.**` keep、进程名补丁、直链更新均保留。
 
 ## [1.3.8] - 2026-10-27
 

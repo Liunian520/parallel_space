@@ -17,6 +17,7 @@ class ParallelSpaceApp : Application() {
         super.onCreate()
         VirtualEngine.create(this)
         try {
+            ToolboxCrashLog.installHandler(this, "app")
             ToolboxController.install(this)
         } catch (_: Throwable) {
         }

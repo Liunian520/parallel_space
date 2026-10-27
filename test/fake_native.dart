@@ -218,6 +218,12 @@ class FakeNative {
         return true;
       case 'a11yGuideMark':
         return 'ok';
+      case 'toolboxCrashLog':
+        return '（测试环境无工具箱日志）';
+      case 'toolboxCrashLogClear':
+        return 'ok';
+      case 'toolboxCrashLogShare':
+        return 'ok';
       case 'vaultCopy':
         return (a['which'] == 'user' || a['which'] == 'username') ? 'copied_user' : 'copied_pass';
       case 'openUrl':

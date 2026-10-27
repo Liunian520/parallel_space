@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.8 → 12308', () {
-    expect(kAppVersionName, '1.3.8');
-    expect(kAppVersionCode, 12308);
-    expect(encodeVersionCode(1, 3, 8), kAppVersionCode);
-    expect(versionCodeFromName('1.3.8'), 12308);
-    expect(encodeVersionCode(1, 3, 8), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 8), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 8), greaterThan(12307));
+  test('版本号只加最后一位：1.3.9 → 12309', () {
+    expect(kAppVersionName, '1.3.9');
+    expect(kAppVersionCode, 12309);
+    expect(encodeVersionCode(1, 3, 9), kAppVersionCode);
+    expect(versionCodeFromName('1.3.9'), 12309);
+    expect(encodeVersionCode(1, 3, 9), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 9), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 9), greaterThan(12307));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -105,7 +105,7 @@ void main() {
     await t.scrollUntilVisible(find.text('本项目开源'), 400);
     expect(find.textContaining('流年似水'), findsOneWidget);
     expect(find.text('https://github.com/Liunian520/parallel_space'), findsOneWidget);
-    expect(find.textContaining('1.3.8'), findsWidgets);
+    expect(find.textContaining('1.3.9'), findsWidgets);
   });
 
   testWidgets('密码本可以直接添加、分组和删除', (t) async {

@@ -88,15 +88,21 @@ object ToolboxController {
     fun onCloneLaunched(ctx: Context, pkg: String) {
         val app = ctx.applicationContext
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_LAST_PKG, pkg).apply()
-        if (!enabled(app)) return
+        if (!enabled(app)) {
+            ToolboxCrashLog.append(app, "INFO", "clone launched but toolbox off pkg=$pkg")
+            return
+        }
         if (!OemAdapter.canDrawOverlay(app)) {
+            ToolboxCrashLog.append(app, "WARN", "clone launched without overlay permission pkg=$pkg")
             notifyOverlay(app)
             return
         }
         val i = Intent(app, ToolboxOverlayService::class.java).putExtra("pkg", pkg)
         try {
             ContextCompat.startForegroundService(app, i)
-        } catch (_: Throwable) {
+            ToolboxCrashLog.append(app, "INFO", "start overlay for pkg=$pkg")
+        } catch (t: Throwable) {
+            ToolboxCrashLog.append(app, "ERROR", "start overlay failed pkg=$pkg", t)
         }
     }
 
@@ -149,8 +155,9 @@ object ToolboxController {
         val svc = ToolboxAccessibilityService.instance
         if (svc != null) {
             val ok = try {
-                svc.fill(username, password)
-            } catch (_: Throwable) {
+                ToolboxAccessibilityService.fillOffMain(svc, username, password)
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(ctx, "ERROR", "fillOffMain", t)
                 false
             }
             if (ok) return "filled"
@@ -204,6 +211,26 @@ object ToolboxController {
             "a11yGuideMark" -> {
                 activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("a11y_guide_seen", true).apply()
                 result.success("ok")
+            }
+            "toolboxCrashLog" -> result.success(ToolboxCrashLog.read(activity))
+            "toolboxCrashLogClear" -> result.success(if (ToolboxCrashLog.clear(activity)) "ok" else "error")
+            "toolboxCrashLogShare" -> {
+                val body = ToolboxCrashLog.read(activity)
+                result.success(
+                    try {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "平行空间工具箱日志")
+                            putExtra(Intent.EXTRA_TEXT, body)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        activity.startActivity(Intent.createChooser(send, "分享工具箱日志"))
+                        "ok"
+                    } catch (t: Throwable) {
+                        ToolboxCrashLog.append(activity, "ERROR", "share log", t)
+                        "error"
+                    }
+                )
             }
             else -> return false
         }

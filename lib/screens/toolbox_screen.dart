@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/clone_actions.dart';
@@ -218,6 +219,129 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CompatScreen())),
                 ),
               ]),
+              SectionCard(title: '诊断', children: [
+                GlassTile(
+                  icon: Icons.bug_report_rounded,
+                  title: '工具箱诊断日志',
+                  subtitle: '悬浮窗消失或崩溃时，可查看、复制或分享最近日志',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ToolboxCrashLogScreen()),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class ToolboxCrashLogScreen extends StatefulWidget {
+  const ToolboxCrashLogScreen({super.key});
+
+  @override
+  State<ToolboxCrashLogScreen> createState() => _ToolboxCrashLogScreenState();
+}
+
+class _ToolboxCrashLogScreenState extends State<ToolboxCrashLogScreen> {
+  String _log = '加载中…';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    final text = await NativeBridge.toolboxCrashLog();
+    if (!mounted) return;
+    setState(() => _log = text);
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _log));
+    if (!mounted) return;
+    showGlassSnack(context, '已复制日志');
+  }
+
+  Future<void> _share() async {
+    setState(() => _busy = true);
+    final r = await NativeBridge.toolboxCrashLogShare();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (r != 'ok') showGlassSnack(context, '分享失败');
+  }
+
+  Future<void> _clear() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空日志？'),
+        content: const Text('只清除本机上的工具箱诊断日志，不影响账号密码本。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('清空')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await NativeBridge.toolboxCrashLogClear();
+    await _reload();
+    if (!mounted) return;
+    showGlassSnack(context, '已清空');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Scaffold(
+      body: BlobBackground(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Row(children: [
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+                  Expanded(child: Text('工具箱诊断日志', style: tt.headlineMedium)),
+                  IconButton(onPressed: _busy ? null : _reload, icon: const Icon(Icons.refresh_rounded)),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Text(
+                  '记录悬浮窗启动、看门狗重挂、addView 失败和未捕获异常。下次小球消失时把这里的内容发我即可定位。',
+                  style: tt.bodySmall,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  FilledButton.tonalIcon(onPressed: _busy ? null : _copy, icon: const Icon(Icons.copy_rounded), label: const Text('复制')),
+                  FilledButton.tonalIcon(onPressed: _busy ? null : _share, icon: const Icon(Icons.share_rounded), label: const Text('分享')),
+                  FilledButton.tonalIcon(onPressed: _busy ? null : _clear, icon: const Icon(Icons.delete_outline_rounded), label: const Text('清空')),
+                ]),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(14),
+                      child: SelectableText(_log, style: tt.bodySmall?.copyWith(fontFamily: 'monospace')),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
