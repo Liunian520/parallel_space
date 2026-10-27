@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.6-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.7-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -61,7 +61,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.6+12306**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.7+12307**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -69,9 +69,9 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.6`（versionCode `12306`），下一次是 `1.3.7`（`12307`）。
+只把修订号加 1：当前 `1.3.7`（versionCode `12307`），下一次是 `1.3.8`（`12308`）。
 
-1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.6→12306）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
+1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.7→12307）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
 每次改版本，同时更新：
 
@@ -143,8 +143,8 @@ HyperOS 的「应用双开」不是工作资料，本应用也不依赖它。引
 
 **覆盖安装提示「必须卸载」**
 
-多半是旧包 versionCode（如 10305）高于你手里的包，或签名证书不一致。1.3.6 起 versionCode 固定为 `12300+修订号`，并始终用同一把 debug 证书签名。装 1.3.6 之后即可正常覆盖更新。
+多半是旧包 versionCode（如 10305）高于你手里的包，或签名证书不一致。1.3.6/1.3.7 起 versionCode 固定为 `12300+修订号`，并始终用同一把 debug 证书签名。装 1.3.6 或更新版本之后即可正常覆盖更新。
 
 **工具箱把整屏糊住、分身点不了**
 
-1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。
+1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。1.3.7 进一步修了编辑时气泡被误拆、键盘弹出导致面板消失的问题，并改为 START_STICKY + 看门狗自动恢复。

@@ -28,7 +28,7 @@ const Duration kUpdateManifestWebTimeout = Duration(seconds: 45);
 
 /// 编码 versionCode。
 ///
-/// 1.3.x 使用 `12300 + patch`（1.3.1→12301…1.3.6→12306），避开曾误用的 10303–10305 降号。
+/// 1.3.x 使用 `12300 + patch`（1.3.1→12301…1.3.7→12307），避开曾误用的 10303–10305 降号。
 /// 其他主次版本仍用 major×10000 + minor×100 + patch。
 int encodeVersionCode(int major, int minor, int patch) {
   if (major == 1 && minor == 3) return 12300 + patch;

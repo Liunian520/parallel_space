@@ -1,6 +1,24 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.6（versionCode 12306），下一次是 1.3.7（12307）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.7（versionCode 12307），下一次是 1.3.8（12308）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.7] - 2026-10-27
+
+### 修复
+
+- **工具箱卡顿后消失**：根因有三处——① 编辑账号时悬浮窗抢焦点，分身进程重要性短暂降到 VISIBLE 以下，旧版 `tick` 每秒走 `else { removeView() }` 直接拆掉气泡；② 打开键盘时系统会给悬浮窗发 `ACTION_OUTSIDE`，旧版一律收起面板；③ 服务用 `START_NOT_STICKY`，被 HyperOS 杀掉后不会自启。
+- **1.3.7 对策**：有分身进程就一直保留气泡；编辑中 / 输入框有焦点时忽略窗外触摸；`START_STICKY` + `onTaskRemoved` 再拉起；看门狗发现气泡被系统摘掉会重新 `addView`；`addView` / `updateViewLayout` 失败只记日志，下一拍恢复；JSON / 图标解析挪到后台线程，主线程更顺。
+
+### 变更
+
+- **添加账号界面**：包名不再手填。改为只读芯片——当前分身的图标 + 应用名，自动绑定，界面更干净。
+- 键盘用 `SOFT_INPUT_ADJUST_PAN`，面板打开时可正常打字，点「收起」或取消才关闭。
+- 版本 `1.3.7+12307`。
+
+### 说明
+
+- 密码本仍是方便优先（无生物识别门禁）。
+- 虚拟引擎、`blackreflection` / `black.**` keep、进程名补丁、直链更新均保留。
 
 ## [1.3.6] - 2026-10-27
 

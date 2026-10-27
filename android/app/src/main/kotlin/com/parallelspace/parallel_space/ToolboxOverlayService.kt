@@ -9,9 +9,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
@@ -19,11 +22,13 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -33,15 +38,23 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
-import android.content.pm.ServiceInfo
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 分身在前台时显示的可拖动、可收起悬浮窗。小卡片半透明背景，不使用系统 blurBehind，不挡下层触摸。
- * 工具列表来自 [ToolboxCatalog]，目前只有账号密码本。
+ * 分身在前台时显示的可拖动、可收起悬浮窗。
+ *
+ * 1.3.7 起：
+ * - 编辑时不因 IME / 窗外触摸误收起；仅在无焦点字段时点窗外才收起，或点「收起」/气泡。
+ * - 抢焦点编辑时，分身进程重要性会短暂下降；不再因此 removeView / stopSelf。
+ * - START_STICKY + 看门狗：工具箱开启且分身仍在时，气泡被系统摘掉会自动加回。
+ * - 添加账号的包名字段改为只读：图标 + 应用名（自动取当前分身）。
  */
 class ToolboxOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
+    private val bg = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "toolbox-overlay").apply { isDaemon = true }
+    }
     private var wm: WindowManager? = null
     private var root: FrameLayout? = null
     private var card: LinearLayout? = null
@@ -51,31 +64,40 @@ class ToolboxOverlayService : Service() {
     private var mode = Mode.TOOLS
     private var pkg = ""
     private var launchedAt = 0L
+    private var lastSeenClientAt = 0L
     private var editingId: String? = null
     private var labelInput: EditText? = null
     private var userInput: EditText? = null
     private var passInput: EditText? = null
-    private var pkgInput: EditText? = null
+    private var resolvedLabel: String = ""
+    private var resolvedIcon: Drawable? = null
+    private val vaultCache = AtomicReference<List<VaultStore.Entry>>(emptyList())
+    private var lastWatchLogAt = 0L
 
     private val tick = object : Runnable {
         override fun run() {
-            if (shouldShow()) {
-                ensureView()
-            } else if (SystemClock.elapsedRealtime() - launchedAt > GRACE_MS && !anyClient()) {
-                stopSelf()
-                return
-            } else {
-                removeView()
+            try {
+                tickOnce()
+            } catch (t: Throwable) {
+                Log.w(TAG, "tick failed", t)
             }
-            handler.postDelayed(this, 1000)
+            handler.postDelayed(this, TICK_MS)
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        pkg = intent?.getStringExtra("pkg")?.takeIf { it.isNotBlank() } ?: ToolboxController.lastPackage(this)
-        if (intent?.hasExtra("pkg") == true) launchedAt = SystemClock.elapsedRealtime()
+        val incoming = intent?.getStringExtra("pkg")?.takeIf { it.isNotBlank() }
+        if (incoming != null) {
+            pkg = incoming
+            launchedAt = SystemClock.elapsedRealtime()
+            lastSeenClientAt = launchedAt
+            resolveAppInfoAsync(pkg)
+        } else if (pkg.isBlank()) {
+            pkg = ToolboxController.lastPackage(this)
+            if (pkg.isNotBlank()) resolveAppInfoAsync(pkg)
+        }
         if (launchedAt == 0L) launchedAt = SystemClock.elapsedRealtime()
         if (!ToolboxController.enabled(this) || !OemAdapter.canDrawOverlay(this)) {
             stopSelf()
@@ -84,27 +106,90 @@ class ToolboxOverlayService : Service() {
         try {
             val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(), type)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.w(TAG, "startForeground failed", t)
             stopSelf()
             return START_NOT_STICKY
         }
-        ToolboxController.onVaultAuthedListener = { rebuild() }
+        ToolboxController.onVaultAuthedListener = { handler.post { rebuild() } }
         handler.removeCallbacks(tick)
         handler.post(tick)
-        return START_NOT_STICKY
+        // 系统杀进程后以 null intent 重启时，立刻尝试恢复气泡
+        handler.post { ensureView(force = root == null) }
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // 主界面被滑掉不等于分身结束；保持服务，由 tick 决定何时停。
+        super.onTaskRemoved(rootIntent)
+        if (ToolboxController.enabled(this) && OemAdapter.canDrawOverlay(this)) {
+            try {
+                val i = Intent(this, ToolboxOverlayService::class.java)
+                if (pkg.isNotBlank()) i.putExtra("pkg", pkg)
+                startForegroundServiceCompat(i)
+            } catch (t: Throwable) {
+                Log.w(TAG, "re-schedule after onTaskRemoved failed", t)
+            }
+        }
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(tick)
         if (ToolboxController.onVaultAuthedListener != null) ToolboxController.onVaultAuthedListener = null
         removeView()
+        try {
+            bg.shutdownNow()
+        } catch (_: Throwable) {
+        }
         super.onDestroy()
     }
 
-    private fun shouldShow(): Boolean {
+    private fun tickOnce() {
+        if (!ToolboxController.enabled(this) || !OemAdapter.canDrawOverlay(this)) {
+            stopSelf()
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (anyClient()) lastSeenClientAt = now
+
+        val wantShow = shouldShow(now)
+        if (wantShow) {
+            // 看门狗：该显示时若气泡丢了（addView 失败 / 被系统摘掉），重新挂上
+            if (root == null || root?.isAttachedToWindow != true) {
+                logWatch("bubble missing while wantShow; re-adding")
+                ensureView(force = true)
+            } else {
+                ensureView(force = false)
+            }
+            return
+        }
+
+        // 正在编辑或面板展开时绝不因短暂不可见而拆窗
+        if (expanded || mode == Mode.EDIT || hasFieldFocus()) {
+            ensureView(force = root == null)
+            return
+        }
+
+        val quietFor = now - lastSeenClientAt.coerceAtLeast(launchedAt)
+        if (quietFor > STOP_AFTER_MS && !anyClient()) {
+            logWatch("no clone for ${quietFor}ms; stopSelf")
+            stopSelf()
+            return
+        }
+        // 分身短暂切后台：只收起面板，保留气泡；超过 HIDE_AFTER 再摘气泡，服务仍活着方便回来
+        if (quietFor > HIDE_AFTER_MS) {
+            if (root != null) {
+                logWatch("clone quiet ${quietFor}ms; hide bubble (service stays)")
+                removeView()
+            }
+        }
+    }
+
+    private fun shouldShow(now: Long = SystemClock.elapsedRealtime()): Boolean {
         if (!ToolboxController.enabled(this) || !OemAdapter.canDrawOverlay(this)) return false
         if (clientVisible()) return true
-        return SystemClock.elapsedRealtime() - launchedAt < GRACE_MS && pkg.isNotBlank()
+        if (anyClient()) return true // 有分身进程就保留，避免焦点切到悬浮窗后被误判为不可见
+        return now - launchedAt < GRACE_MS && pkg.isNotBlank()
     }
 
     private fun clientVisible(): Boolean = processes().any { p ->
@@ -122,7 +207,11 @@ class ToolboxOverlayService : Service() {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun ensureView() {
+    private fun ensureView(force: Boolean) {
+        if (root != null && root?.isAttachedToWindow == true && !force) return
+        if (force && root != null) {
+            removeView()
+        }
         if (root != null) return
         val window = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         wm = window
@@ -167,25 +256,30 @@ class ToolboxOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
             x = prefs.getInt("x", screenWidth() - bubbleSize - dp(12))
             y = prefs.getInt("y", dp(160))
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
         }
         // 不要 FLAG_BLUR_BEHIND / dimAmount：HyperOS 上会把整屏糊掉，分身无法点。
         lp = params
         bubbleView.setOnTouchListener(dragListener { toggle() })
         holder.setOnTouchListener { _, e ->
             if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                expanded = false
-                mode = Mode.TOOLS
-                focusable(false)
-                applyVisibility()
+                // 编辑中 / 输入框有焦点时：IME 弹出也会发 OUTSIDE，不能收起
+                if (mode == Mode.EDIT || hasFieldFocus()) {
+                    return@setOnTouchListener true
+                }
+                collapse()
                 true
             } else false
         }
         try {
             window.addView(holder, params)
-        } catch (_: Throwable) {
+            applyVisibility()
+        } catch (t: Throwable) {
+            Log.w(TAG, "addView failed", t)
             root = null
             card = null
             bubble = null
+            // 下一 tick 看门狗会再试
         }
     }
 
@@ -194,6 +288,9 @@ class ToolboxOverlayService : Service() {
         root = null
         card = null
         bubble = null
+        labelInput = null
+        userInput = null
+        passInput = null
         try {
             wm?.removeView(view)
         } catch (_: Throwable) {
@@ -201,14 +298,23 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun toggle() {
-        expanded = !expanded
-        if (!expanded) {
-            mode = Mode.TOOLS
-            focusable(false)
-        } else {
-            // 展开：小卡片 + 点窗外收起，触摸透传到下层应用
-            focusable(false)
-        }
+        if (expanded) collapse() else expand()
+    }
+
+    private fun expand() {
+        expanded = true
+        // 展开只读面板：不抢焦点，触摸穿透
+        focusable(false)
+        applyVisibility()
+        refreshVaultAsync()
+    }
+
+    private fun collapse() {
+        hideIme()
+        expanded = false
+        mode = Mode.TOOLS
+        editingId = null
+        focusable(false)
         applyVisibility()
     }
 
@@ -219,8 +325,13 @@ class ToolboxOverlayService : Service() {
         val params = lp ?: return
         val view = root ?: return
         try {
-            wm?.updateViewLayout(view, params)
-        } catch (_: Throwable) {
+            if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+        } catch (t: Throwable) {
+            Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
+            // 视图可能已被系统摘掉：清空引用，让看门狗重建
+            root = null
+            card = null
+            bubble = null
         }
     }
 
@@ -229,8 +340,8 @@ class ToolboxOverlayService : Service() {
         val view = root ?: return
         val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        // on=true：编辑时要键盘焦点；仍 NOT_TOUCH_MODAL，窗外点击穿透并收起
-        // on=false：气泡或只读面板，NOT_FOCUSABLE，不抢下层应用
+        // on=true：编辑要键盘；仍 NOT_TOUCH_MODAL，并 WATCH_OUTSIDE（由 handler 决定是否收起）
+        // on=false：气泡或只读面板，NOT_FOCUSABLE
         params.flags = if (on) {
             base or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
@@ -241,9 +352,30 @@ class ToolboxOverlayService : Service() {
         } else {
             base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
         params.dimAmount = 0f
         try {
-            wm?.updateViewLayout(view, params)
+            if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+        } catch (t: Throwable) {
+            Log.w(TAG, "updateViewLayout in focusable failed", t)
+            root = null
+            card = null
+            bubble = null
+        }
+    }
+
+    private fun hasFieldFocus(): Boolean {
+        val a = labelInput?.hasFocus() == true
+        val b = userInput?.hasFocus() == true
+        val c = passInput?.hasFocus() == true
+        return a || b || c
+    }
+
+    private fun hideIme() {
+        try {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            val token = root?.windowToken ?: return
+            imm.hideSoftInputFromWindow(token, 0)
         } catch (_: Throwable) {
         }
     }
@@ -279,9 +411,10 @@ class ToolboxOverlayService : Service() {
 
     private fun buildTools(panel: LinearLayout) {
         focusable(false)
-        panel.addView(header("工具箱", "收起") { toggle() })
+        panel.addView(header("工具箱", "收起") { collapse() })
+        val shown = resolvedLabel.ifBlank { pkg }.ifBlank { "分身" }
         val hint = TextView(this).apply {
-            text = if (pkg.isBlank()) "分身运行中" else "当前分身 $pkg"
+            text = if (pkg.isBlank()) "分身运行中" else "当前分身 · $shown"
             setTextColor(Palette(this@ToolboxOverlayService).sub)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setPadding(0, dp(4), 0, dp(8))
@@ -291,7 +424,7 @@ class ToolboxOverlayService : Service() {
             panel.addView(toolRow(tool.title, tool.summary) {
                 if (tool.id == "vault") {
                     mode = Mode.VAULT
-                    rebuild()
+                    refreshVaultAsync(thenRebuild = true)
                 } else {
                     toast("这个工具还没接上")
                 }
@@ -305,12 +438,7 @@ class ToolboxOverlayService : Service() {
             mode = Mode.TOOLS
             rebuild()
         })
-        val entries = try {
-            VaultStore.list(this)
-        } catch (_: Throwable) {
-            panel.addView(body("读取失败，请重试"))
-            return
-        }
+        val entries = vaultCache.get()
         panel.addView(button("添加账号") {
             editingId = null
             mode = Mode.EDIT
@@ -327,7 +455,12 @@ class ToolboxOverlayService : Service() {
         for (key in keys) {
             val list = groups[key].orEmpty().sortedBy { it.label }
             val current = list.any { it.pkg == pkg }
-            col.addView(section(if (current) "当前分身 · ${list.first().pkg}" else list.first().pkg))
+            val title = if (current) {
+                "当前分身 · ${resolvedLabel.ifBlank { list.first().pkg }}"
+            } else {
+                appLabelCached(list.first().pkg).ifBlank { list.first().pkg }
+            }
+            col.addView(section(title))
             for (e in list) col.addView(entryRow(e))
         }
         scroll.addView(col)
@@ -368,12 +501,15 @@ class ToolboxOverlayService : Service() {
         val panel = card ?: return
         panel.addView(body("删除「${e.label}」？"))
         panel.addView(button("确认删除") {
-            try {
-                VaultStore.delete(this, e.id)
-            } catch (_: Throwable) {
-                toast("删除失败")
+            bg.execute {
+                try {
+                    VaultStore.delete(this, e.id)
+                } catch (_: Throwable) {
+                    handler.post { toast("删除失败") }
+                    return@execute
+                }
+                refreshVaultAsync(thenRebuild = true)
             }
-            rebuild()
         })
     }
 
@@ -381,13 +517,10 @@ class ToolboxOverlayService : Service() {
     private fun buildEdit(panel: LinearLayout) {
         focusable(true)
         val existing = editingId?.let { id ->
-            try {
-                VaultStore.find(this, id)
-            } catch (_: Throwable) {
-                null
-            }
+            vaultCache.get().firstOrNull { it.id == id }
         }
         panel.addView(header(if (existing == null) "添加账号" else "编辑账号", "取消") {
+            hideIme()
             mode = Mode.VAULT
             focusable(false)
             rebuild()
@@ -395,37 +528,87 @@ class ToolboxOverlayService : Service() {
         labelInput = field("名称，例如主号", existing?.label ?: "")
         userInput = field("用户名", existing?.username ?: "")
         passInput = field("密码", existing?.password ?: "", password = true)
-        pkgInput = field("包名", existing?.pkg ?: pkg)
         panel.addView(labelInput)
         panel.addView(userInput)
         panel.addView(passInput)
-        panel.addView(pkgInput)
-        panel.addView(button("保存") { saveEdit(existing) })
+        // 包名不再手填：只读展示当前分身（图标 + 应用名）
+        val bindPkg = (existing?.pkg?.takeIf { it.isNotBlank() } ?: pkg)
+        panel.addView(appChip(bindPkg))
+        panel.addView(button("保存") { saveEdit(existing, bindPkg) })
     }
 
-    private fun saveEdit(existing: VaultStore.Entry?) {
+    private fun appChip(bindPkg: String): LinearLayout {
+        val pal = Palette(this)
+        val label = if (bindPkg == pkg && resolvedLabel.isNotBlank()) {
+            resolvedLabel
+        } else {
+            appLabelCached(bindPkg).ifBlank { bindPkg.ifBlank { "未知应用" } }
+        }
+        val icon = if (bindPkg == pkg) resolvedIcon else loadIcon(bindPkg)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = round(if (pal.night) 0x22FFFFFF else 0x11000000, dp(12).toFloat())
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            gap.topMargin = dp(6)
+            layoutParams = gap
+            val iv = ImageView(this@ToolboxOverlayService).apply {
+                val s = dp(28)
+                layoutParams = LinearLayout.LayoutParams(s, s).apply { marginEnd = dp(10) }
+                if (icon != null) setImageDrawable(icon)
+                else setImageResource(R.drawable.ic_toolbox)
+                contentDescription = "应用图标"
+            }
+            addView(iv)
+            val col = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.VERTICAL
+                val name = TextView(this@ToolboxOverlayService).apply {
+                    text = label
+                    setTextColor(pal.text)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                val sub = TextView(this@ToolboxOverlayService).apply {
+                    text = "自动绑定当前分身"
+                    setTextColor(pal.sub)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                }
+                addView(name)
+                addView(sub)
+            }
+            addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+    }
+
+    private fun saveEdit(existing: VaultStore.Entry?, bindPkg: String) {
         val map = mapOf(
             "id" to (existing?.id ?: ""),
             "label" to (labelInput?.text?.toString() ?: ""),
             "user" to (userInput?.text?.toString() ?: ""),
             "pass" to (passInput?.text?.toString() ?: ""),
-            "pkg" to (pkgInput?.text?.toString() ?: ""),
-            "clone" to (existing?.cloneUid ?: if (pkg.isBlank()) "" else "w:$pkg"),
+            "pkg" to bindPkg,
+            "clone" to (existing?.cloneUid ?: if (bindPkg.isBlank()) "" else "w:$bindPkg"),
         )
-        val r = try {
-            VaultStore.upsert(this, map)
-        } catch (e: VaultStore.Locked) {
-            "locked"
-        } catch (_: Throwable) {
-            "error"
-        }
-        when (r) {
-            "ok" -> {
-                mode = Mode.VAULT
-                focusable(false)
-                rebuild()
+        bg.execute {
+            val r = try {
+                VaultStore.upsert(this, map)
+            } catch (_: VaultStore.Locked) {
+                "locked"
+            } catch (_: Throwable) {
+                "error"
             }
-            else -> toast(if (r == "error") "保存失败" else r)
+            handler.post {
+                when (r) {
+                    "ok" -> {
+                        hideIme()
+                        mode = Mode.VAULT
+                        focusable(false)
+                        refreshVaultAsync(thenRebuild = true)
+                    }
+                    else -> toast(if (r == "error") "保存失败" else r)
+                }
+            }
         }
     }
 
@@ -433,12 +616,14 @@ class ToolboxOverlayService : Service() {
         // 先放弃焦点，避免无障碍把字填进悬浮窗自己的输入框。
         focusable(false)
         handler.postDelayed({
-            val r = try {
-                ToolboxController.fill(this, e.username, e.password)
-            } catch (_: Throwable) {
-                "error"
+            bg.execute {
+                val r = try {
+                    ToolboxController.fill(this, e.username, e.password)
+                } catch (_: Throwable) {
+                    "error"
+                }
+                handler.post { toast(fillMessage(r)) }
             }
-            toast(fillMessage(r))
         }, 200)
     }
 
@@ -447,6 +632,79 @@ class ToolboxOverlayService : Service() {
         "copied" -> "未开启无障碍，已复制到剪贴板"
         "copied_no_field" -> "没有找到输入框，已复制到剪贴板"
         else -> "填入失败"
+    }
+
+    private fun refreshVaultAsync(thenRebuild: Boolean = false) {
+        bg.execute {
+            val list = try {
+                VaultStore.list(this)
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            vaultCache.set(list)
+            if (thenRebuild || (expanded && mode == Mode.VAULT)) {
+                handler.post { if (expanded) rebuild() }
+            }
+        }
+    }
+
+    private fun resolveAppInfoAsync(packageName: String) {
+        if (packageName.isBlank()) return
+        bg.execute {
+            val label = appLabelSync(packageName)
+            val icon = loadIcon(packageName)
+            handler.post {
+                if (pkg == packageName) {
+                    resolvedLabel = label
+                    resolvedIcon = icon
+                    if (expanded) rebuild()
+                    try {
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        nm.notify(NOTIFICATION_ID, notification())
+                    } catch (_: Throwable) {
+                    }
+                }
+            }
+        }
+    }
+
+    private val labelMemo = HashMap<String, String>()
+
+    private fun appLabelCached(packageName: String): String {
+        if (packageName.isBlank()) return ""
+        labelMemo[packageName]?.let { return it }
+        // 轻量：若已在后台解析过当前包，直接用；否则先返回包名，异步补全
+        if (packageName == pkg && resolvedLabel.isNotBlank()) return resolvedLabel
+        bg.execute {
+            val l = appLabelSync(packageName)
+            handler.post {
+                labelMemo[packageName] = l
+                if (expanded && mode == Mode.VAULT) rebuild()
+            }
+        }
+        return packageName
+    }
+
+    private fun appLabelSync(packageName: String): String {
+        if (packageName.isBlank()) return ""
+        return try {
+            val pm = packageManager
+            val ai = pm.getApplicationInfo(packageName, 0)
+            pm.getApplicationLabel(ai)?.toString()?.takeIf { it.isNotBlank() } ?: packageName
+        } catch (_: PackageManager.NameNotFoundException) {
+            packageName
+        } catch (_: Throwable) {
+            packageName
+        }
+    }
+
+    private fun loadIcon(packageName: String): Drawable? {
+        if (packageName.isBlank()) return null
+        return try {
+            packageManager.getApplicationIcon(packageName)
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun toolRow(title: String, summary: String, onClick: () -> Unit): LinearLayout {
@@ -531,6 +789,10 @@ class ToolboxOverlayService : Service() {
             } else {
                 InputType.TYPE_CLASS_TEXT
             }
+            // 点输入框时确保窗口可聚焦（防止从只读切过来漏掉）
+            setOnFocusChangeListener { _, has ->
+                if (has) focusable(true)
+            }
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             gap.topMargin = dp(6)
             layoutParams = gap
@@ -589,6 +851,13 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    private fun logWatch(msg: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastWatchLogAt < 2_000L) return
+        lastWatchLogAt = now
+        Log.i(TAG, msg)
+    }
+
     private fun notification(): Notification {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
@@ -600,14 +869,27 @@ class ToolboxOverlayService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        val follow = when {
+            resolvedLabel.isNotBlank() -> "正在跟随 $resolvedLabel"
+            pkg.isNotBlank() -> "正在跟随 $pkg"
+            else -> "分身运行时可以打开密码本"
+        }
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_toolbox)
             .setContentTitle("工具箱悬浮窗")
-            .setContentText(if (pkg.isBlank()) "分身运行时可以打开密码本" else "正在跟随 $pkg")
+            .setContentText(follow)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .build()
+    }
+
+    private fun startForegroundServiceCompat(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= 26) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
     }
 
     private fun dp(v: Int): Int = TypedValue.applyDimension(
@@ -656,8 +938,12 @@ class ToolboxOverlayService : Service() {
     }
 
     companion object {
+        private const val TAG = "ToolboxOverlay"
         private const val CHANNEL = "toolbox_overlay"
         private const val NOTIFICATION_ID = 1004
-        private const val GRACE_MS = 8_000L
+        private const val GRACE_MS = 12_000L
+        private const val HIDE_AFTER_MS = 20_000L
+        private const val STOP_AFTER_MS = 45_000L
+        private const val TICK_MS = 1_500L
     }
 }
