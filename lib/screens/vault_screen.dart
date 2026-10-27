@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/clone_app.dart';
+import '../services/clone_actions.dart';
 import '../services/native_bridge.dart';
 import '../services/vault_group.dart';
 import '../state/clone_store.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
-import 'toolbox_screen.dart';
 
 /// 主应用里的密码本：添加 / 编辑 / 删除都在这里完成。
 /// 悬浮工具箱只读，共用原生 `vault_plain.json`。
@@ -53,7 +53,6 @@ class _VaultScreenState extends State<VaultScreen> {
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
-    maybeShowA11yGuide(context);
     if (widget.openEditor) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _edit();
@@ -226,7 +225,7 @@ class _VaultScreenState extends State<VaultScreen> {
                                     FilledButton.icon(
                                       onPressed: () => _edit(),
                                       icon: const Icon(Icons.add_rounded),
-                                      label: const Text('添加账号'),
+                                      label: const Text('添加第一条'),
                                     ),
                                   ],
                                 ]),

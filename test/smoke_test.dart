@@ -304,9 +304,11 @@ void main() {
     expect(find.text('开始模拟'), findsOneWidget);
 
     await t.scrollUntilVisible(find.text('移除分身'), 300, scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('移除分身'));
+    await settle(t, 5);
     await t.tap(find.text('移除分身'));
-    await settle(t, 10);
-    await t.tap(find.text('删除'));
+    await settle(t, 15);
+    await t.tap(find.widgetWithText(FilledButton, '删除'));
     await settle(t, 20);
     expect(native.methods, contains('hideWorkApp'));
     final restored = CloneStore(prefs);
