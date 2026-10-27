@@ -18,7 +18,24 @@ Future<void> checkForUpdates(BuildContext context, {bool force = true}) async {
     case UpdateCheckResultKind.skippedInsideWork:
       showGlassSnack(context, r.message ?? '请在主空间检查更新');
     case UpdateCheckResultKind.error:
+      // 直链失败时提供浏览器回退
       showGlassSnack(context, r.message ?? '检查更新失败');
+      if (force) {
+        final open = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('检查更新失败'),
+            content: Text(r.message ?? '无法获取更新清单'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('浏览器打开')),
+            ],
+          ),
+        );
+        if (open == true && context.mounted) {
+          await svc.openShareFallback();
+        }
+      }
     case UpdateCheckResultKind.available:
       await showUpdateSheet(context, svc, r.manifest!);
   }
@@ -83,6 +100,10 @@ class _UpdateSheetState extends State<_UpdateSheet> {
     }
   }
 
+  Future<void> _browser() async {
+    await widget.svc.openShareFallback(manifest: widget.manifest);
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = widget.manifest;
@@ -113,6 +134,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
         const SizedBox(height: 18),
         Row(children: [
           TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('稍后')),
+          TextButton(onPressed: _busy ? null : _browser, child: const Text('浏览器下载')),
           const Spacer(),
           FilledButton(onPressed: _busy ? null : _go, child: Text(_busy ? '处理中…' : '立即更新')),
         ]),

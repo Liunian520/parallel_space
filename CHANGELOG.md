@@ -1,6 +1,24 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.4（versionCode 10304），下一次是 1.3.5（10305）。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.5（versionCode 10305），下一次是 1.3.6（10306）。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.5] - 2026-10-27
+
+### 新增
+
+- 应用内更新改为「直链优先」：清单从 GitHub raw 的固定地址读取（`update_manifest.txt`），APK 使用网盘永久直链入口 `https://link.liunianai.cn/f/{objectKey}`（服务端 302 现签 CDN，绕过 Link 盾）。
+- 检查更新或下载失败时，可一键用浏览器打开分享页作为回退。
+
+### 变更
+
+- 版本 `1.3.5+10305`。
+- 上传脚本在发版时把 APK 的 `publicUrl` 写入清单，并同步覆盖仓库内的 `update_manifest.txt`；App 与仓库均不包含网盘 API 密钥。
+- 设置页「检查更新」在清单直连失败时弹出对话框，可选择浏览器打开。
+
+### 说明
+
+- 分享短链（如 `n8afhu`）仍可能被地区 / Link 盾拦截，因此不再作为 App 内主路径。
+- 1.3.4 的工具箱、密码本、机型适配与开源署名均保留。
 
 ## [1.3.4] - 2026-10-27
 

@@ -8,11 +8,18 @@ class UpdateManifest {
     required this.size,
     required this.notes,
     this.publishedAt,
+    this.apkShareUrl,
   });
 
   final String versionName;
   final int versionCode;
+
+  /// APK 永久直链（`https://link.liunianai.cn/f/...`），跟随 302 即可下载。
   final String apkUrl;
+
+  /// 可选：分享短链，供浏览器回退（可能过 Link 盾）。
+  final String? apkShareUrl;
+
   final String sha256;
   final int size;
   final String notes;
@@ -50,6 +57,11 @@ class UpdateManifest {
     DateTime? published;
     final pa = m['publishedAt'];
     if (pa is String && pa.trim().isNotEmpty) published = DateTime.tryParse(pa.trim());
+    String? share;
+    final su = m['apkShareUrl'];
+    if (su is String && (su.startsWith('https://') || su.startsWith('http://'))) {
+      share = su.trim();
+    }
     return UpdateManifest(
       versionName: name.trim(),
       versionCode: vc,
@@ -58,6 +70,7 @@ class UpdateManifest {
       size: sz,
       notes: notes.trim(),
       publishedAt: published,
+      apkShareUrl: share,
     );
   }
 

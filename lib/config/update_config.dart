@@ -1,8 +1,18 @@
 /// 应用内更新配置。
+///
+/// 清单与 APK 都走「可直连、无 Link 盾」的地址：
+/// - 清单：仓库内固定的 `update_manifest.txt`（GitHub raw，版本无关、永久有效）
+/// - APK：网盘永久直链入口 `https://link.liunianai.cn/f/{objectKey}`
+///   （服务端 302 现签短 TTL CDN；上传脚本写入清单，App 不含任何网盘密钥）
+/// 分享短链仍可能被 Link 盾 / 地区拦截，仅作浏览器回退。
 library;
 
-/// 更新清单短链（Link 盾：直连可能返回挑战 HTML，需 WebView 跟随到最终 .txt/.json）。
-const String kUpdateManifestUrl = 'https://link.liunianai.cn/n8afhu';
+/// 更新清单（GitHub raw，跟随 main；上传脚本每次发版覆盖同名文件）。
+const String kUpdateManifestUrl =
+    'https://raw.githubusercontent.com/Liunian520/parallel_space/main/update_manifest.txt';
+
+/// 清单 / 发版页的分享短链（可能过盾；检查失败或用户选择时用浏览器打开）。
+const String kUpdateShareFallbackUrl = 'https://link.liunianai.cn/n8afhu';
 
 /// 自动检查最小间隔。
 const Duration kUpdateAutoCheckInterval = Duration(hours: 12);

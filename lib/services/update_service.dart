@@ -24,6 +24,8 @@ class UpdateCheckResult {
 }
 
 /// 应用内更新：拉清单 → 比对 versionCode → 下载校验 → 唤起系统安装。
+///
+/// 清单与 APK 均优先走无盾直链；分享短链仅作浏览器回退。
 class UpdateService {
   UpdateService(this._prefs);
   final SharedPreferences _prefs;
@@ -82,31 +84,58 @@ class UpdateService {
     }
   }
 
-  /// 先 HTTP（跟随重定向）；若正文是 Link 盾 HTML，则走原生 WebView 取最终 JSON。
+  /// 先直连清单 URL（GitHub raw / 网盘 `/f/` 永久直链）；若落到 Link 盾 HTML，再尝试 WebView；仍失败则抛错（UI 可开浏览器回退）。
   Future<String> _fetchManifestBody() async {
-    final res = await http.get(Uri.parse(kUpdateManifestUrl)).timeout(kUpdateManifestTimeout);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw HttpException('清单请求失败 HTTP ${res.statusCode}', uri: Uri.parse(kUpdateManifestUrl));
+    final primary = await _httpGetBody(kUpdateManifestUrl);
+    if (primary != null) return primary;
+
+    // 回退：分享短链（可能过盾）
+    final viaWeb = await NativeBridge.fetchUpdateManifestViaWeb(kUpdateShareFallbackUrl);
+    if (viaWeb != null && viaWeb.trim().isNotEmpty) {
+      final t = viaWeb.trimLeft();
+      if (t.startsWith('{') || t.startsWith('[')) return viaWeb;
+      final extracted = _extractJsonObject(viaWeb);
+      if (extracted != null) return extracted;
     }
-    final body = utf8.decode(res.bodyBytes);
-    final trimmed = body.trimLeft();
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) return body;
-    // Link 盾等：HTML 挑战页
-    if (trimmed.toLowerCase().contains('<html') || trimmed.toLowerCase().contains('<!doctype')) {
-      final viaWeb = await NativeBridge.fetchUpdateManifestViaWeb(kUpdateManifestUrl);
-      if (viaWeb == null || viaWeb.trim().isEmpty) {
-        throw StateError('清单短链需浏览器过盾，但未能取得 JSON');
+    throw StateError('无法获取更新清单，请稍后重试或用浏览器打开下载页');
+  }
+
+  /// GET 并跟随重定向；成功返回 JSON 正文，盾页 / 非 2xx 返回 null。
+  Future<String?> _httpGetBody(String url) async {
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(kUpdateManifestTimeout);
+      if (res.statusCode < 200 || res.statusCode >= 300) return null;
+      final body = utf8.decode(res.bodyBytes);
+      final trimmed = body.trimLeft();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) return body;
+      if (trimmed.toLowerCase().contains('<html') || trimmed.toLowerCase().contains('<!doctype')) {
+        return null; // Link 盾等
       }
-      return viaWeb;
+      return _extractJsonObject(body);
+    } on TimeoutException {
+      return null;
+    } on SocketException {
+      return null;
+    } on HttpException {
+      return null;
     }
-    // 有些网盘把 JSON 包在纯文本里，尝试截取首个 {...}
+  }
+
+  static String? _extractJsonObject(String body) {
     final start = body.indexOf('{');
     final end = body.lastIndexOf('}');
     if (start >= 0 && end > start) return body.substring(start, end + 1);
-    throw const FormatException('清单响应既不是 JSON 也不是可解析的 HTML');
+    return null;
   }
 
-  /// 下载并校验；[onProgress] 收到 0..1。返回本地 APK 路径。跟随重定向。
+  /// 打开分享页（清单短链或清单里的 apkShareUrl）。
+  Future<String> openShareFallback({UpdateManifest? manifest}) {
+    final url = manifest?.apkShareUrl?.trim();
+    final target = (url != null && url.isNotEmpty) ? url : kUpdateShareFallbackUrl;
+    return NativeBridge.openUrl(target);
+  }
+
+  /// 下载并校验；[onProgress] 收到 0..1。返回本地 APK 路径。跟随重定向（永久直链 → CDN）。
   Future<File> download(UpdateManifest m, {void Function(double p)? onProgress, http.Client? client}) async {
     final dir = Directory('${(await getTemporaryDirectory()).path}/updates');
     if (!await dir.exists()) await dir.create(recursive: true);
@@ -119,6 +148,11 @@ class UpdateService {
       final streamed = await c.send(req).timeout(kUpdateDownloadTimeout);
       if (streamed.statusCode < 200 || streamed.statusCode >= 400) {
         throw HttpException('下载失败 HTTP ${streamed.statusCode}', uri: Uri.parse(m.apkUrl));
+      }
+      // 若误下到 HTML 盾页，content-type 常为 text/html 且体积远小于 APK
+      final ctype = streamed.headers['content-type'] ?? '';
+      if (ctype.toLowerCase().contains('text/html')) {
+        throw StateError('直链返回了网页而非 APK，请用浏览器打开下载页');
       }
       final sink = out.openWrite();
       var got = 0;
@@ -149,4 +183,3 @@ class UpdateService {
 
   Future<String> install(File apk) => NativeBridge.installApk(apk.path);
 }
-

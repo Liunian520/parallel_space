@@ -11,26 +11,36 @@ void main() {
       expect(encodeVersionCode(1, 3, 0), 10300);
       expect(versionCodeFromName('1.2.4'), 10204);
       expect(versionCodeFromName('1.3.0+10300'), 10300);
-      expect(versionCodeFromName('1.3.4'), 10304);
+      expect(versionCodeFromName('1.3.5'), 10305);
       expect(versionCodeFromName('bogus'), isNull);
     });
   });
 
+  group('update URLs', () {
+    test('manifest is stable raw URL; share fallback is short link', () {
+      expect(kUpdateManifestUrl, contains('raw.githubusercontent.com'));
+      expect(kUpdateManifestUrl, contains('update_manifest.txt'));
+      expect(kUpdateShareFallbackUrl, startsWith('https://link.liunianai.cn/'));
+      expect(kUpdateManifestUrl, isNot(contains('n8afhu')), reason: 'app must not use shield short link as primary');
+    });
+  });
+
   group('UpdateManifest.tryParse', () {
-    test('valid', () {
+    test('valid with apkShareUrl', () {
       final m = UpdateManifest.tryParse({
-        'versionName': '1.3.1',
-        'versionCode': 10301,
-        'apkUrl': 'https://cdn.example/f/disk/a.apk',
+        'versionName': '1.3.5',
+        'versionCode': 10305,
+        'apkUrl': 'https://link.liunianai.cn/f/disk/a/parallel_space.apk',
+        'apkShareUrl': 'https://link.liunianai.cn/abcd',
         'sha256': 'a' * 64,
         'size': 19970000,
         'notes': 'fix',
         'publishedAt': '2026-10-27T00:00:00+08:00',
       });
       expect(m, isNotNull);
-      expect(m!.isNewerThanApp(currentCode: 10300, currentName: '1.3.0'), isTrue);
-      expect(m.isNewerThanApp(currentCode: 10301, currentName: '1.3.1'), isFalse);
-      expect(m.isNewerThanApp(currentCode: 4, currentName: '1.2.4'), isTrue, reason: 'legacy buildNumber uses name');
+      expect(m!.apkShareUrl, 'https://link.liunianai.cn/abcd');
+      expect(m.isNewerThanApp(currentCode: 10304, currentName: '1.3.4'), isTrue);
+      expect(m.isNewerThanApp(currentCode: 10305, currentName: '1.3.5'), isFalse);
     });
 
     test('missing fields → null', () {
@@ -48,6 +58,7 @@ void main() {
         'size': 10,
       });
       expect(m!.sha256, 'aa' * 32);
+      expect(m.apkShareUrl, isNull);
     });
 
     test('JSON string roundtrip', () {

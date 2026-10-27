@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.4-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.5-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -20,7 +20,7 @@
 | 📍 | 虚拟定位 | 系统级模拟位置，前台服务持续推送，对整机生效 |
 | 🧰 | 工具箱 | 分身在前台时出现可拖动、可收起的悬浮小窗 |
 | 🔑 | 账号密码本 | Android Keystore + AES-GCM 加密；按分身或包名分组；打开前验证身份；可用无障碍填入，否则复制到剪贴板并在 30 秒后清除 |
-| 🔄 | 应用内更新 | 设置里检查更新，清单短链 `https://link.liunianai.cn/n8afhu` |
+| 🔄 | 应用内更新 | 设置里检查更新；清单走 GitHub 直链，APK 走网盘永久直链 `/f/...`（无 Link 盾）；失败时可浏览器打开分享页 |
 | 📱 | 机型适配 | 小米、华为、荣耀、OPPO、vivo、三星和 Pixel 的权限页集中处理，设置里可以逐项查看 |
 
 另外还有：私密空间（PIN / 生物识别）、备份与迁移（不含 PIN，也不含密码本）、桌面小组件、主题（跟随系统 / 动态取色）。
@@ -61,13 +61,13 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk`。版本来自 `pubspec.yaml`，当前是 **1.3.4+10304**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk`。版本来自 `pubspec.yaml`，当前是 **1.3.5+10305**。
 
 `android/app/libs/bcore-release.aar` 带有进程名字节码补丁，说明见 `android/app/libs/BCORE_PATCH.txt`。`proguard-rules.pro` 必须保留 `blackbox`、`blackreflection`、`black.**` 和 `me.weishu`，否则发布包里虚拟引擎无法初始化。
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.4`（versionCode `10304`），下一次是 `1.3.5`（`10305`）。`versionCode = 主版本 × 10000 + 次版本 × 100 + 修订号`。
+只把修订号加 1：当前 `1.3.5`（versionCode `10305`），下一次是 `1.3.6`（`10306`）。`versionCode = 主版本 × 10000 + 次版本 × 100 + 修订号`。
 
 每次改版本，同时更新：
 
@@ -79,6 +79,7 @@ flutter build apk --release --target-platform android-arm64
 ## 项目结构
 
 ```
+update_manifest.txt   应用内更新清单（发版时由上传脚本覆盖；App 读 GitHub raw）
 lib/
   config/           版本号、更新清单地址
   models/           分身、应用信息
