@@ -267,6 +267,13 @@ class _ToolboxCrashLogScreenState extends State<ToolboxCrashLogScreen> {
     showGlassSnack(context, '已复制日志');
   }
 
+  /// 最近 50 条日志（按 `---` 分隔的条目；无分隔符时按行）。
+  Future<void> _copyRecent() async {
+    await Clipboard.setData(ClipboardData(text: recentLogEntries(_log, 50)));
+    if (!mounted) return;
+    showGlassSnack(context, '已复制最近 50 行');
+  }
+
   Future<void> _share() async {
     setState(() => _busy = true);
     final r = await NativeBridge.toolboxCrashLogShare();
@@ -321,7 +328,8 @@ class _ToolboxCrashLogScreenState extends State<ToolboxCrashLogScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Wrap(spacing: 8, runSpacing: 8, children: [
-                  FilledButton.tonalIcon(onPressed: _busy ? null : _copy, icon: const Icon(Icons.copy_rounded), label: const Text('复制')),
+                  FilledButton.tonalIcon(onPressed: _busy ? null : _copy, icon: const Icon(Icons.copy_rounded), label: const Text('复制全部')),
+                  FilledButton.icon(onPressed: _busy ? null : _copyRecent, icon: const Icon(Icons.content_paste_rounded), label: const Text('复制最近 50 行')),
                   FilledButton.tonalIcon(onPressed: _busy ? null : _share, icon: const Icon(Icons.share_rounded), label: const Text('分享')),
                   FilledButton.tonalIcon(onPressed: _busy ? null : _clear, icon: const Icon(Icons.delete_outline_rounded), label: const Text('清空')),
                 ]),
@@ -348,4 +356,15 @@ class _ToolboxCrashLogScreenState extends State<ToolboxCrashLogScreen> {
       ),
     );
   }
+}
+
+
+/// 取日志末尾 [n] 条：条目以 `\n---\n` 分隔，否则按行。
+String recentLogEntries(String log, int n) {
+  final s = log.trim();
+  if (s.isEmpty) return '';
+  final parts = s.contains('\n---') ? s.split(RegExp(r'\n---\n?')) : s.split('\n');
+  final kept = parts.where((e) => e.trim().isNotEmpty).toList();
+  final tail = kept.length > n ? kept.sublist(kept.length - n) : kept;
+  return tail.map((e) => e.trim()).join('\n');
 }

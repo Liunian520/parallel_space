@@ -1,6 +1,23 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.14（versionCode 12314），下一次是 1.3.15（12315）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.15（versionCode 12315），下一次是 1.3.16（12316）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.15] - 2026-10-28
+
+### 修复
+
+- **工具箱整块面板点不动（含「返回」）的真正根因：重建死循环**。诊断日志里 `layoutExpanded reason=rebuild_vault_async` 每约 8ms 刷一次。`buildVault()` 里会调用 `refreshVaultAsync()`，而后者在密码本页展开时又会触发 `rebuild()`，于是无限循环；按钮在手指按下到抬起之间就被换掉，点击永远落不到。
+- **对策**：建面板时不再触发刷新；只有数据真的变了才重建，且防抖 ≥300ms；手指按住期间推迟重建到抬起；每秒重建超过 5 次直接跳过并记 `rebuild storm`。FileObserver 只监听 `vault_plain.json` 的 `CLOSE_WRITE` / `MOVED_TO`。
+- **窗口**：展开改为全屏窗口 + 透明遮罩（点面板外收起），不再用 `NOT_TOUCH_MODAL` / `WATCH_OUTSIDE`；展开/收起会重挂窗口。
+
+### 体验
+
+- 诊断日志页新增「复制最近 50 行」（保留「复制全部」）；日志上限从 256KB 降到 96KB，超出自动裁剪。
+- 根布局记录每次按下/抬起的坐标与命中控件，每次挂窗记录 flags。
+
+### 其他
+
+- 版本 `1.3.15+12315`。
 
 ## [1.3.14] - 2026-10-28
 

@@ -44,9 +44,11 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * 分身在前台时显示的可拖动、可收起悬浮窗。
  *
- * 1.3.14：展开时按面板实测宽高设 WindowManager.LayoutParams，并把 x/y 夹到屏内，
- * 避免气泡停在右边缘时面板大半出屏、点击被当成 ACTION_OUTSIDE。
- * outside_tap 先校验屏幕坐标；拖动只绑在标题栏把手；组件间不用 sendBroadcast。
+ * 1.3.15：展开改为 MATCH_PARENT 全屏窗口 + 透明遮罩点外收起，去掉
+ * FLAG_NOT_TOUCH_MODAL / FLAG_WATCH_OUTSIDE_TOUCH（HyperOS 上这两项配合
+ * updateViewLayout 改尺寸后，触控区域常不更新，整块面板含「返回」都点不动，
+ * 而气泡在收起态可点）。展开/收起会 remove+addView 重建输入通道。
+ * 根布局 dispatchTouchEvent 打点；每次 updateViewLayout 记 flags。
  * 1.3.12：只读密码本；保留 tick 防抖、AppOps、START_STICKY、看门狗。
  */
 class ToolboxOverlayService : Service() {
@@ -58,6 +60,8 @@ class ToolboxOverlayService : Service() {
     private var root: FrameLayout? = null
     private var card: LinearLayout? = null
     private var bubble: View? = null
+    /** 展开时全屏透明遮罩：点面板外收起；避免 WATCH_OUTSIDE。 */
+    private var scrim: View? = null
     private var lp: WindowManager.LayoutParams? = null
     private var expanded = false
     private var mode = Mode.TOOLS
@@ -393,16 +397,44 @@ class ToolboxOverlayService : Service() {
             elevation = dp(10).toFloat()
             setPadding(dp(16), dp(14), dp(16), dp(14))
             visibility = View.GONE
-            alpha = 0f
-            scaleX = 0.92f
-            scaleY = 0.92f
+            // 1.3.15：不要 alpha=0 起步——部分机型半透明视图不收触摸
+            alpha = 1f
+            scaleX = 1f
+            scaleY = 1f
+            isClickable = true
+            isFocusable = false
         }
         card = panel
-        val holder = FrameLayout(this)
+        val scrimView = View(this).apply {
+            // 近乎全透明但仍参与命中（避免 OEM 把全 0 alpha 当穿透）
+            setBackgroundColor(0x01000000)
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = false
+            contentDescription = "关闭工具箱面板"
+            setOnClickListener {
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap scrim collapse")
+                collapse()
+            }
+        }
+        scrim = scrimView
+        val holder = TouchLogFrameLayout(this).apply {
+            // 根布局给一层极淡底，避免 HyperOS 按「根像素全透明」把整窗触控区域算空
+            setBackgroundColor(0x01000000)
+        }
+        holder.addView(
+            scrimView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
         holder.addView(bubbleView, FrameLayout.LayoutParams(bubbleSize, bubbleSize))
         holder.addView(
             panel,
-            FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT),
+            FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.TOP or Gravity.START
+            },
         )
         root = holder
         val prefs = getSharedPreferences("toolbox", Context.MODE_PRIVATE)
@@ -411,38 +443,33 @@ class ToolboxOverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            bubbleFlags(),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = prefs.getInt("x", screenWidth() - bubbleSize - dp(12))
             y = prefs.getInt("y", dp(160))
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+            // 明确不要 NOT_TOUCHABLE
+            dimAmount = 0f
         }
-        // 不要 FLAG_BLUR_BEHIND / dimAmount：HyperOS 上会把整屏糊掉，分身无法点。
         lp = params
         bubbleX = params.x
         bubbleY = params.y
         bubbleView.setOnTouchListener(dragListener { toggle() })
-        holder.setOnTouchListener { _, e ->
-            if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                handleOutsideTap(e)
-                true
-            } else false
-        }
         try {
             window.addView(holder, params)
+            logWindow("addView_bubble", params)
             applyVisibility()
             scheduleIdleDim()
-            ToolboxCrashLog.append(this, "INFO", "addView ok x=${params.x} y=${params.y} pkg=$pkg")
+            ToolboxCrashLog.append(this, "INFO", "addView ok x=${params.x} y=${params.y} pkg=$pkg flags=${flagString(params.flags)}")
         } catch (t: Throwable) {
             Log.w(TAG, "addView failed", t)
             ToolboxCrashLog.append(this, "ERROR", "addView failed", t)
             root = null
             card = null
             bubble = null
+            scrim = null
             // 下一 tick 看门狗会再试
         }
     }
@@ -470,6 +497,7 @@ class ToolboxOverlayService : Service() {
         root = null
         card = null
         bubble = null
+        scrim = null
         try {
             b?.animate()?.cancel()
         } catch (_: Throwable) {
@@ -505,27 +533,11 @@ class ToolboxOverlayService : Service() {
             cancelIdleDim()
             bubble?.animate()?.cancel()
             bubble?.alpha = 1f
-            ensureOverlayFlags()
+            card?.animate()?.cancel()
+            card?.alpha = 1f
+            card?.scaleX = 1f
+            card?.scaleY = 1f
             applyVisibility()
-            layoutExpandedWindow(reason = "expand")
-            val panel = card
-            val gen = viewGen
-            if (panel != null) {
-                panel.animate().cancel()
-                panel.alpha = 0f
-                panel.scaleX = 0.92f
-                panel.scaleY = 0.92f
-                panel.animate()
-                    .alpha(1f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(180)
-                    .withEndAction {
-                        if (gen != viewGen) return@withEndAction
-                        layoutExpandedWindow(reason = "expand_end")
-                    }
-                    .start()
-            }
             refreshVaultAsync()
         } catch (t: Throwable) {
             ToolboxCrashLog.append(this, "ERROR", "expand failed", t)
@@ -536,66 +548,183 @@ class ToolboxOverlayService : Service() {
         try {
             expanded = false
             mode = Mode.TOOLS
-            val params = lp
-            if (params != null) {
+            card?.animate()?.cancel()
+            applyVisibility()
+            scheduleIdleDim()
+        } catch (t: Throwable) {
+            ToolboxCrashLog.append(this, "ERROR", "collapse failed", t)
+        }
+    }
+
+    /**
+     * 收起：WRAP_CONTENT 气泡窗。展开：MATCH_PARENT 全屏窗 + 透明遮罩 + 面板。
+     * 1.3.15 起切换时 remove + addView 重建，强制系统刷新输入区域（HyperOS 上
+     * 只 updateViewLayout 改尺寸/flags 时，触控区域会停留在旧的 48dp 气泡）。
+     */
+    private fun applyVisibility() {
+        try {
+            val params = lp ?: return
+            val view = root ?: return
+            bubble?.visibility = if (expanded) View.GONE else View.VISIBLE
+            card?.visibility = if (expanded) View.VISIBLE else View.GONE
+            scrim?.visibility = if (expanded) View.VISIBLE else View.GONE
+            if (expanded) {
+                params.width = WindowManager.LayoutParams.MATCH_PARENT
+                params.height = WindowManager.LayoutParams.MATCH_PARENT
+                params.x = 0
+                params.y = 0
+                params.flags = expandedFlags()
+                rebuild("apply_visibility")
+                positionPanel()
+            } else {
                 params.width = WindowManager.LayoutParams.WRAP_CONTENT
                 params.height = WindowManager.LayoutParams.WRAP_CONTENT
                 params.x = bubbleX
                 params.y = bubbleY
+                params.flags = bubbleFlags()
             }
-            ensureOverlayFlags()
-            val panel = card
-            val gen = viewGen
-            if (panel != null && panel.visibility == View.VISIBLE) {
-                panel.animate().cancel()
-                panel.animate()
-                    .alpha(0f)
-                    .scaleX(0.92f)
-                    .scaleY(0.92f)
-                    .setDuration(140)
-                    .withEndAction {
-                        if (gen != viewGen) return@withEndAction
-                        applyVisibility()
-                        scheduleIdleDim()
-                    }
-                    .start()
-            } else {
-                applyVisibility()
-                scheduleIdleDim()
-            }
+            params.dimAmount = 0f
+            reattach(view, params, if (expanded) "expand" else "collapse")
         } catch (t: Throwable) {
-            ToolboxCrashLog.append(this, "ERROR", "collapse failed", t)
+            ToolboxCrashLog.append(this, "ERROR", "applyVisibility failed", t)
+        }
+    }
+
+    /** 先 removeViewImmediate 再 addView，确保输入通道按新 LayoutParams 重建。 */
+    private fun reattach(view: View, params: WindowManager.LayoutParams, reason: String) {
+        val w = wm ?: return
+        try {
+            if (view.isAttachedToWindow) {
+                try {
+                    w.removeViewImmediate(view)
+                } catch (t: Throwable) {
+                    ToolboxCrashLog.append(this, "WARN", "reattach remove failed reason=$reason", t)
+                }
+            }
+            w.addView(view, params)
+            logWindow("reattach_$reason", params)
+        } catch (t: Throwable) {
+            ToolboxCrashLog.append(this, "ERROR", "reattach add failed reason=$reason", t)
+            // 退回 updateViewLayout
             try {
-                applyVisibility()
-            } catch (_: Throwable) {
+                if (view.isAttachedToWindow) w.updateViewLayout(view, params)
+                logWindow("reattach_fallback_update_$reason", params)
+            } catch (t2: Throwable) {
+                ToolboxCrashLog.append(this, "ERROR", "reattach fallback failed", t2)
             }
         }
     }
 
-    private fun applyVisibility() {
+    /** 全屏窗口里，面板贴近气泡位置并夹在屏内。 */
+    private fun positionPanel() {
+        val panel = card ?: return
         try {
-            bubble?.visibility = if (expanded) View.GONE else View.VISIBLE
-            card?.visibility = if (expanded) View.VISIBLE else View.GONE
-            if (expanded) {
-                rebuild("apply_visibility")
-            }
-            if (expanded) {
-                layoutExpandedWindow(reason = "apply_visibility")
-            } else {
-                val params = lp ?: return
-                val view = root ?: return
-                params.width = WindowManager.LayoutParams.WRAP_CONTENT
-                params.height = WindowManager.LayoutParams.WRAP_CONTENT
-                try {
-                    if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
-                } catch (t: Throwable) {
-                    Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
-                    ToolboxCrashLog.append(this, "ERROR", "updateViewLayout applyVisibility", t)
-                }
-            }
+            val targetW = dp(320).coerceAtMost(screenWidth())
+            val maxH = (screenHeight() * 0.85f).toInt().coerceAtLeast(dp(200))
+            panel.measure(
+                View.MeasureSpec.makeMeasureSpec(targetW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST),
+            )
+            val w = targetW
+            val h = panel.measuredHeight.coerceAtLeast(dp(120)).coerceAtMost(maxH)
+            val (px, py) = clampOverlayPosition(bubbleX, bubbleY, w, h, screenWidth(), screenHeight())
+            val lpPanel = (panel.layoutParams as? FrameLayout.LayoutParams)
+                ?: FrameLayout.LayoutParams(w, FrameLayout.LayoutParams.WRAP_CONTENT)
+            lpPanel.width = w
+            lpPanel.height = FrameLayout.LayoutParams.WRAP_CONTENT
+            lpPanel.gravity = Gravity.TOP or Gravity.START
+            lpPanel.leftMargin = px
+            lpPanel.topMargin = py
+            panel.layoutParams = lpPanel
+            ToolboxCrashLog.append(
+                this,
+                "INFO",
+                "positionPanel w=$w h=$h x=$px y=$py sw=${screenWidth()} sh=${screenHeight()} bubble=($bubbleX,$bubbleY)",
+            )
         } catch (t: Throwable) {
-            ToolboxCrashLog.append(this, "ERROR", "applyVisibility failed", t)
+            ToolboxCrashLog.append(this, "ERROR", "positionPanel failed", t)
         }
+    }
+
+    private fun bubbleFlags(): Int =
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+
+    /** 展开：全屏 + 不抢焦点；不用 NOT_TOUCH_MODAL / WATCH_OUTSIDE。 */
+    private fun expandedFlags(): Int =
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+
+    private fun flagString(f: Int): String {
+        val parts = ArrayList<String>()
+        fun has(bit: Int, n: String) { if (f and bit != 0) parts += n }
+        has(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, "NOT_FOCUSABLE")
+        has(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, "NOT_TOUCHABLE")
+        has(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, "NOT_TOUCH_MODAL")
+        has(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, "WATCH_OUTSIDE")
+        has(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, "LAYOUT_IN_SCREEN")
+        has(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, "HW_ACCEL")
+        return "0x" + Integer.toHexString(f) + "[" + parts.joinToString("|") + "]"
+    }
+
+    private fun logWindow(tag: String, p: WindowManager.LayoutParams) {
+        ToolboxCrashLog.append(
+            this,
+            "INFO",
+            "win $tag w=${p.width} h=${p.height} x=${p.x} y=${p.y} type=${p.type} flags=${flagString(p.flags)} expanded=$expanded mode=$mode",
+        )
+    }
+
+    /** 根布局：记录每个 DOWN/UP/OUTSIDE 的坐标与命中子视图，定位「点了没反应」。 */
+    private inner class TouchLogFrameLayout(ctx: Context) : FrameLayout(ctx) {
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            val a = ev.actionMasked
+            if (a == MotionEvent.ACTION_DOWN) touchActive = true
+            val handled = super.dispatchTouchEvent(ev)
+            if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+                touchActive = false
+                if (pendingRebuild != null) handler.postDelayed(flushRebuild, 120L)
+            }
+            if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_UP ||
+                a == MotionEvent.ACTION_OUTSIDE || a == MotionEvent.ACTION_CANCEL
+            ) {
+                val target = try {
+                    findDeepestAt(this, ev.x.toInt(), ev.y.toInt())
+                } catch (_: Throwable) {
+                    null
+                }
+                val name = target?.let {
+                    (it.contentDescription?.toString()?.takeIf { s -> s.isNotBlank() }
+                        ?: (it as? TextView)?.text?.toString()?.take(12)
+                        ?: it.javaClass.simpleName)
+                } ?: "none"
+                ToolboxCrashLog.append(
+                    this@ToolboxOverlayService,
+                    "TOUCH",
+                    "root ${MotionEvent.actionToString(a)} raw=(${ev.rawX.toInt()},${ev.rawY.toInt()}) " +
+                        "local=(${ev.x.toInt()},${ev.y.toInt()}) handled=$handled target=$name " +
+                        "expanded=$expanded size=${width}x$height",
+                )
+            }
+            return handled
+        }
+    }
+
+    private fun findDeepestAt(v: View, x: Int, y: Int): View? {
+        if (v.visibility != View.VISIBLE) return null
+        if (x < 0 || y < 0 || x >= v.width || y >= v.height) return null
+        if (v is android.view.ViewGroup) {
+            for (i in v.childCount - 1 downTo 0) {
+                val c = v.getChildAt(i)
+                val cx = x - c.left + v.scrollX
+                val cy = y - c.top + v.scrollY
+                val hit = findDeepestAt(c, cx, cy)
+                if (hit != null) return hit
+            }
+        }
+        return if (v.isClickable) v else null
     }
 
     private var idleDimRunnable: Runnable? = null
@@ -665,113 +794,37 @@ class ToolboxOverlayService : Service() {
         getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", target).putInt("y", params.y).apply()
     }
 
-    /**
-     * 展开面板时：按实测宽高设置窗口，并把 x/y 夹进屏幕。
-     * 根因：气泡常停在右边缘 x≈屏宽-48，WRAP_CONTENT 面板 320dp 向右长出屏外，
-     * 用户点到的「看得见的按钮」其实落在窗口外 → ACTION_OUTSIDE → 立刻收起，onClick 永不触发。
-     */
-    private fun layoutExpandedWindow(reason: String) {
-        val params = lp ?: return
-        val view = root ?: return
-        val panel = card ?: return
-        if (!expanded) return
-        try {
-            val targetW = dp(320)
-            val maxH = (screenHeight() * 0.85f).toInt().coerceAtLeast(dp(200))
-            panel.measure(
-                View.MeasureSpec.makeMeasureSpec(targetW, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST),
-            )
-            val w = panel.measuredWidth.coerceAtLeast(dp(280)).coerceAtMost(screenWidth())
-            val h = panel.measuredHeight.coerceAtLeast(dp(120)).coerceAtMost(maxH)
-            val sw = screenWidth()
-            val sh = screenHeight()
-            val (nx, ny) = clampOverlayPosition(params.x, params.y, w, h, sw, sh)
-            params.width = w
-            params.height = h
-            params.x = nx
-            params.y = ny
-            if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
-            ToolboxCrashLog.append(
-                this,
-                "INFO",
-                "layoutExpanded reason=$reason w=$w h=$h x=$nx y=$ny sw=$sw sh=$sh bubble=($bubbleX,$bubbleY)",
-            )
-        } catch (t: Throwable) {
-            ToolboxCrashLog.append(this, "ERROR", "layoutExpanded failed reason=$reason", t)
-        }
-    }
-
-    /** ACTION_OUTSIDE：只有触摸点确实在面板屏幕矩形之外才收起；展开后 350ms 内忽略。 */
-    private fun handleOutsideTap(e: MotionEvent) {
-        val now = SystemClock.elapsedRealtime()
-        if (now - expandedAt < 350L) {
-            ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=expand_grace")
-            return
-        }
-        val panel = card
-        val x = e.rawX.toInt()
-        val y = e.rawY.toInt()
-        if (panel != null && panel.isShown && panel.width > 0 && panel.height > 0) {
-            val loc = IntArray(2)
-            try {
-                panel.getLocationOnScreen(loc)
-            } catch (_: Throwable) {
-                loc[0] = 0
-                loc[1] = 0
-            }
-            val left = loc[0]
-            val top = loc[1]
-            val right = left + panel.width
-            val bottom = top + panel.height
-            val margin = dp(12)
-            val inside = x in (left - margin)..(right + margin) && y in (top - margin)..(bottom + margin)
-            ToolboxCrashLog.append(
-                this,
-                "INFO",
-                "outside_tap raw=($x,$y) panel=[$left,$top-$right,$bottom] inside=$inside",
-            )
-            // raw 为 0,0 时（部分机型 OUTSIDE 不带坐标）不要误收；只有明确在外才收
-            if (inside || (x == 0 && y == 0 && left > 0)) {
-                ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=coords_inside_or_unknown")
-                return
-            }
-        } else {
-            ToolboxCrashLog.append(this, "INFO", "outside_tap raw=($x,$y) panel=null/hidden")
-        }
-        ToolboxCrashLog.append(this, "INFO", "collapse reason=outside_tap")
-        collapse()
-    }
-
-        /** 悬浮窗永久 NOT_FOCUSABLE：绝不因编辑切换焦点（编辑在独立 Activity）。 */
-    private fun ensureOverlayFlags() {
-        val params = lp ?: return
-        val view = root ?: return
-        val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        val newFlags = if (expanded) {
-            base or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-        } else {
-            base
-        }
-        if (params.flags == newFlags && view.isAttachedToWindow) return
-        params.flags = newFlags
-        params.dimAmount = 0f
-        try {
-            if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
-        } catch (t: Throwable) {
-            Log.w(TAG, "updateViewLayout in ensureOverlayFlags failed", t)
-            ToolboxCrashLog.append(this, "ERROR", "updateViewLayout ensureOverlayFlags", t)
-            // 不拆窗：仅记日志，下一拍看门狗再处理
-            ToolboxCrashLog.append(this, "WARN", "ensure_flags_update_failed kept bubble")
-        }
-    }
-
     private fun safeRebuild() = rebuild("safe")
 
+    @Volatile private var touchActive = false
+    private var pendingRebuild: String? = null
+    private val rebuildTimes = ArrayDeque<Long>()
+
+    /** 防抖 ≥300ms；手指按下期间推迟到 ACTION_UP，避免点击中途换掉视图。 */
+    private fun requestRebuild(reason: String) {
+        pendingRebuild = reason
+        handler.removeCallbacks(flushRebuild)
+        handler.postDelayed(flushRebuild, 300L)
+    }
+
+    private val flushRebuild = Runnable {
+        val r = pendingRebuild ?: return@Runnable
+        if (touchActive) {
+            ToolboxCrashLog.append(this, "INFO", "rebuild deferred reason=$r touch_active")
+            return@Runnable
+        }
+        pendingRebuild = null
+        rebuild(r)
+    }
+
     private fun rebuild(reason: String = "unspecified") {
+        val now = SystemClock.elapsedRealtime()
+        rebuildTimes.addLast(now)
+        while (rebuildTimes.isNotEmpty() && now - rebuildTimes.first() > 1000L) rebuildTimes.removeFirst()
+        if (rebuildTimes.size > 5) {
+            ToolboxCrashLog.append(this, "WARN", "rebuild storm ${rebuildTimes.size}/s reason=$reason; skipped")
+            return
+        }
         try {
             val panel = card ?: return
             if (!expanded) return
@@ -780,8 +833,8 @@ class ToolboxOverlayService : Service() {
                 Mode.TOOLS -> buildTools(panel)
                 Mode.VAULT -> buildVault(panel)
             }
-            // 内容变高/变矮后重新量窗，避免触控区域与可见面板错位
-            layoutExpandedWindow(reason = "rebuild_$reason")
+            // 全屏窗内只重新摆放面板，不改窗口尺寸
+            positionPanel()
         } catch (t: Throwable) {
             Log.w(TAG, "rebuild failed reason=$reason", t)
             ToolboxCrashLog.append(this, "ERROR", "rebuild mode=$mode reason=$reason", t)
@@ -853,11 +906,10 @@ class ToolboxOverlayService : Service() {
             val obs = object : android.os.FileObserver(
                 dir,
                 android.os.FileObserver.CLOSE_WRITE or
-                    android.os.FileObserver.MOVED_TO or
-                    android.os.FileObserver.MODIFY,
+                    android.os.FileObserver.MOVED_TO,
             ) {
                 override fun onEvent(event: Int, path: String?) {
-                    if (path != VaultStore.FILE_JSON && path != (VaultStore.FILE_JSON + ".tmp")) return
+                    if (path != VaultStore.FILE_JSON) return
                     handler.post {
                         try {
                             VaultStore.invalidateCache()
@@ -966,7 +1018,6 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun buildTools(panel: LinearLayout) {
-        ensureOverlayFlags()
         panel.addView(toolboxHeader())
 
         val shown = resolvedLabel.ifBlank { pkg }.ifBlank { "分身" }
@@ -985,7 +1036,8 @@ class ToolboxOverlayService : Service() {
                         VaultStore.invalidateCache()
                     } catch (_: Throwable) {
                     }
-                    refreshVaultAsync(thenRebuild = true)
+                    rebuild("enter_vault")
+                    refreshVaultAsync()
                 } else {
                     toast("这个工具还没接上")
                 }
@@ -1025,12 +1077,10 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun buildVault(panel: LinearLayout) {
-        ensureOverlayFlags()
         panel.addView(header("密码本", "返回") {
             mode = Mode.TOOLS
             rebuild("vault_back")
         })
-        refreshVaultAsync(thenRebuild = false)
         panel.addView(button("去密码本添加") { openPasswordBook() })
         val forCurrent = vaultCache.get().filter { e ->
             pkg.isNotBlank() && (e.pkg == pkg || e.cloneUid == "w:$pkg" || e.cloneUid == pkg)
@@ -1306,11 +1356,12 @@ class ToolboxOverlayService : Service() {
             } catch (_: Throwable) {
                 emptyList()
             }
-            vaultCache.set(list)
+            val old = vaultCache.getAndSet(list)
+            if (old == list) return@runBg
             if (thenRebuild || (expanded && mode == Mode.VAULT)) {
                 handler.post {
                     if (!expanded) return@post
-                    rebuild(if (thenRebuild) "vault_refresh" else "vault_async")
+                    requestRebuild(if (thenRebuild) "vault_refresh" else "vault_async")
                 }
             }
         }
@@ -1326,7 +1377,7 @@ class ToolboxOverlayService : Service() {
                     resolvedLabel = label
                     resolvedIcon = icon
                     if (expanded) {
-                        rebuild("app_info")
+                        requestRebuild("app_info")
                     }
                     try {
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1349,7 +1400,7 @@ class ToolboxOverlayService : Service() {
             val l = appLabelSync(packageName)
             handler.post {
                 labelMemo[packageName] = l
-                if (expanded && mode == Mode.VAULT) rebuild("label_memo")
+                if (expanded && mode == Mode.VAULT) requestRebuild("label_memo")
             }
         }
         return packageName
@@ -1473,8 +1524,8 @@ class ToolboxOverlayService : Service() {
                         cancelIdleDim()
                         downX = e.rawX
                         downY = e.rawY
-                        startX = params.x
-                        startY = params.y
+                        startX = if (expanded) bubbleX else params.x
+                        startY = if (expanded) bubbleY else params.y
                         dragging = false
                         return true
                     }
@@ -1483,21 +1534,32 @@ class ToolboxOverlayService : Service() {
                         val dy = (e.rawY - downY).toInt()
                         if (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop) dragging = true
                         if (dragging) {
-                            val winW = if (expanded) params.width.coerceAtLeast(dp(48)) else dp(48)
-                            val winH = if (expanded) params.height.coerceAtLeast(dp(48)) else dp(48)
-                            val (nx, ny) = clampOverlayPosition(
-                                startX + dx,
-                                startY + dy,
-                                winW,
-                                winH,
-                                screenWidth(),
-                                screenHeight(),
-                            )
-                            params.x = nx
-                            params.y = ny
-                            try {
-                                wm?.updateViewLayout(root, params)
-                            } catch (_: Throwable) {
+                            if (expanded) {
+                                // 全屏窗内：拖面板（改 margin），窗口本身不动
+                                val (nx, ny) = clampOverlayPosition(
+                                    startX + dx, startY + dy,
+                                    card?.width?.coerceAtLeast(dp(48)) ?: dp(320),
+                                    card?.height?.coerceAtLeast(dp(48)) ?: dp(200),
+                                    screenWidth(), screenHeight(),
+                                )
+                                bubbleX = nx
+                                bubbleY = ny
+                                (card?.layoutParams as? FrameLayout.LayoutParams)?.let { lpp ->
+                                    lpp.leftMargin = nx
+                                    lpp.topMargin = ny
+                                    card?.layoutParams = lpp
+                                }
+                            } else {
+                                val (nx, ny) = clampOverlayPosition(
+                                    startX + dx, startY + dy, dp(48), dp(48),
+                                    screenWidth(), screenHeight(),
+                                )
+                                params.x = nx
+                                params.y = ny
+                                try {
+                                    wm?.updateViewLayout(root, params)
+                                } catch (_: Throwable) {
+                                }
                             }
                         }
                         return true

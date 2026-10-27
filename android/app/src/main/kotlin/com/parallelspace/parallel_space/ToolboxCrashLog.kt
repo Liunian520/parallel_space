@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ToolboxCrashLog {
     private const val TAG = "ToolboxCrashLog"
     private const val FILE = "toolbox_crash.log"
-    private const val MAX_BYTES = 256 * 1024
+    private const val MAX_BYTES = 96 * 1024
     private const val RESTART_REQ = 9911
     private val handlerInstalled = AtomicBoolean(false)
     private val lock = Any()
