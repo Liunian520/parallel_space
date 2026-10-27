@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.9",
-  "versionCode": 12309,
-  "apkUrl": "https://link.liunianai.cn/f/disk/tekdrnumbgnnj4vvkpcjtr7alr/parallel_space_v1.3.9_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/9qdk36",
-  "sha256": "75bd29e242f34285b116e1325d534a8cc1af4e5757d3e88f331e08963c58f4f1",
-  "size": 21598727,
-  "notes": "1.3.9：修 HyperOS 上工具箱小球误消失（/proc 识别 :pN + STICKY 保活）；悬浮窗/无障碍全面防崩溃；诊断日志可复制分享；崩溃后自动拉回悬浮窗。",
-  "publishedAt": "2026-10-27T21:17:23+08:00"
+  "versionName": "1.3.10",
+  "versionCode": 12310,
+  "apkUrl": "https://link.liunianai.cn/f/disk/krviwvynmifq4si1sileawek0v/parallel_space_v1.3.10_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/3uwgzh",
+  "sha256": "6b0d028c5c0d8490ffb6e6db7189acd863bfffa84a6ef4c7eb456bcaf687e486",
+  "size": 21165682,
+  "notes": "1.3.10：修工具箱在自己的密码框打字时闪烁消失（编辑会话钉住、忽略 IME 窗外触摸、禁止编辑中异步 rebuild；隐藏写 reason=）；保留 1.3.9 诊断日志与看门狗。",
+  "publishedAt": "2026-10-27T23:36:44+08:00"
 }
