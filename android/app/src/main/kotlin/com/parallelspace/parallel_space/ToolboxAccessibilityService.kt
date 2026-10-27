@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -82,12 +83,13 @@ class ToolboxAccessibilityService : AccessibilityService() {
         false
     }
 
+    /**
+     * 优先取 TYPE_APPLICATION（分身登录页），跳过输入法 / 无障碍覆盖层 / 系统层。
+     * 展开的悬浮窗常抢到 rootInActiveWindow，必须排到后面或丢弃无 EditText 的层。
+     */
     private fun collectRoots(): List<AccessibilityNodeInfo> {
-        val out = ArrayList<AccessibilityNodeInfo>()
-        try {
-            rootInActiveWindow?.let { out += it }
-        } catch (_: Throwable) {
-        }
+        val app = ArrayList<AccessibilityNodeInfo>()
+        val other = ArrayList<AccessibilityNodeInfo>()
         if (Build.VERSION.SDK_INT >= 21) {
             try {
                 for (w in windows.orEmpty()) {
@@ -96,16 +98,50 @@ class ToolboxAccessibilityService : AccessibilityService() {
                     } catch (_: Throwable) {
                         null
                     } ?: continue
-                    if (out.none { sameNode(it, r) }) out += r
-                    else try {
-                        r.recycle()
+                    val type = try {
+                        w.type
                     } catch (_: Throwable) {
+                        -1
+                    }
+                    // 输入法 / 无障碍层几乎不可能是登录表单
+                    if (type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+                        type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
+                    ) {
+                        try {
+                            r.recycle()
+                        } catch (_: Throwable) {
+                        }
+                        continue
+                    }
+                    val bucket = if (type == AccessibilityWindowInfo.TYPE_APPLICATION) app else other
+                    if (bucket.none { sameNode(it, r) } && app.none { sameNode(it, r) } && other.none { sameNode(it, r) }) {
+                        bucket += r
+                    } else {
+                        try {
+                            r.recycle()
+                        } catch (_: Throwable) {
+                        }
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(this, "WARN", "collectRoots windows", t)
             }
         }
-        return out
+        // rootInActiveWindow 兜底（可能是悬浮窗，放最后）
+        try {
+            val active = rootInActiveWindow
+            if (active != null) {
+                val known = app + other
+                if (known.none { sameNode(it, active) }) other += active
+                else try {
+                    active.recycle()
+                } catch (_: Throwable) {
+                }
+            }
+        } catch (_: Throwable) {
+        }
+        ToolboxCrashLog.append(this, "INFO", "collectRoots app=${app.size} other=${other.size}")
+        return app + other
     }
 
     private fun sameNode(a: AccessibilityNodeInfo, b: AccessibilityNodeInfo): Boolean = try {

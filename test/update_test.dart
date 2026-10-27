@@ -10,21 +10,37 @@ void main() {
       expect(encodeVersionCode(1, 2, 4), 10204);
       expect(encodeVersionCode(1, 3, 0), 12300);
       expect(encodeVersionCode(1, 3, 6), 12306);
-      expect(encodeVersionCode(1, 3, 7), 12307);
+      expect(encodeVersionCode(1, 3, 13), 12313);
       expect(versionCodeFromName('1.2.4'), 10204);
       expect(versionCodeFromName('1.3.0+12300'), 12300);
-      expect(versionCodeFromName('1.3.6'), 12306);
-      expect(versionCodeFromName('1.3.7'), 12307);
+      expect(versionCodeFromName('1.3.13'), 12313);
       expect(versionCodeFromName('bogus'), isNull);
     });
   });
 
   group('update URLs', () {
-    test('manifest is stable raw URL; share fallback is short link', () {
+    test('multi-source candidates: github → jsdelivr → ghproxy → disk', () {
       expect(kUpdateManifestUrl, contains('raw.githubusercontent.com'));
       expect(kUpdateManifestUrl, contains('update_manifest.txt'));
+      expect(kUpdateManifestJsDelivrUrl, contains('cdn.jsdelivr.net'));
+      expect(kUpdateManifestGhProxyUrl, contains('ghproxy'));
+      expect(kUpdateManifestDiskUrl, startsWith('https://link.liunianai.cn/f/'));
       expect(kUpdateShareFallbackUrl, startsWith('https://link.liunianai.cn/'));
+
+      final c = kUpdateManifestHttpCandidates;
+      expect(c.length, 4);
+      expect(c[0], kUpdateManifestUrl);
+      expect(c[1], kUpdateManifestJsDelivrUrl);
+      expect(c[2], kUpdateManifestGhProxyUrl);
+      expect(c[3], kUpdateManifestDiskUrl);
       expect(kUpdateManifestUrl, isNot(contains('n8afhu')), reason: 'app must not use shield short link as primary');
+    });
+
+    test('cacheBustUrl appends epochMs', () {
+      final a = cacheBustUrl('https://example.com/m.txt', epochMs: 42);
+      expect(a, 'https://example.com/m.txt?t=42');
+      final b = cacheBustUrl('https://example.com/m.txt?x=1', epochMs: 99);
+      expect(b, 'https://example.com/m.txt?x=1&t=99');
     });
   });
 
@@ -45,6 +61,31 @@ void main() {
       expect(m.isNewerThanApp(currentCode: 10305, currentName: '1.3.5'), isTrue);
       expect(m.isNewerThanApp(currentCode: 12302, currentName: '1.3.2'), isTrue);
       expect(m.isNewerThanApp(currentCode: 12306, currentName: '1.3.6'), isFalse);
+      expect(m.isNewerThanApp(currentCode: 12311, currentName: '1.3.11'), isFalse);
+      expect(
+        UpdateManifest.tryParse({
+          'versionName': '1.3.12',
+          'versionCode': 12312,
+          'apkUrl': 'https://link.liunianai.cn/f/x.apk',
+          'sha256': 'b' * 64,
+          'size': 1,
+        })!.isNewerThanApp(currentCode: 12311, currentName: '1.3.11'),
+        isTrue,
+      );
+    });
+
+
+    test('ABI offset: arm64 buildNumber 14311 still sees 1.3.12 as newer by name', () {
+      final m = UpdateManifest.tryParse({
+        'versionName': '1.3.12',
+        'versionCode': 12312,
+        'apkUrl': 'https://link.liunianai.cn/f/x.apk',
+        'sha256': 'c' * 64,
+        'size': 1,
+      })!;
+      expect(m.isNewerThanApp(currentCode: 14311, currentName: '1.3.11'), isTrue);
+      expect(m.isNewerThanApp(currentCode: 14312, currentName: '1.3.12'), isFalse);
+      expect(m.isNewerThanApp(currentCode: 12311, currentName: '1.3.11'), isTrue);
     });
 
     test('missing fields → null', () {

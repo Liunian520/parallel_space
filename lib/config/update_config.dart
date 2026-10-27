@@ -1,18 +1,49 @@
 /// 应用内更新配置。
 ///
-/// 清单与 APK 都走「可直连、无 Link 盾」的地址：
-/// - 清单：仓库内固定的 `update_manifest.txt`（GitHub raw，版本无关、永久有效）
-/// - APK：网盘永久直链入口 `https://link.liunianai.cn/f/{objectKey}`
-///   （服务端 302 现签短 TTL CDN；上传脚本写入清单，App 不含任何网盘密钥）
-/// 分享短链仍可能被 Link 盾 / 地区拦截，仅作浏览器回退。
+/// 清单多源拉取（国内 GitHub raw 常被缓存或拦截）：
+/// 1. GitHub raw（带 `?t=` 防缓存）
+/// 2. jsDelivr CDN 镜像
+/// 3. ghproxy 代理
+/// 4. 网盘永久直链 `/f/...`（发版脚本每次上传后回写本文件的 [kUpdateManifestDiskUrl]）
+/// 5. 分享短链 WebView 过盾（最后兜底）
+///
+/// APK：网盘永久直链入口 `https://link.liunianai.cn/f/{objectKey}`
+/// （服务端 302 现签短 TTL CDN；上传脚本写入清单，App 不含任何网盘密钥）
 library;
 
 /// 更新清单（GitHub raw，跟随 main；上传脚本每次发版覆盖同名文件）。
 const String kUpdateManifestUrl =
     'https://raw.githubusercontent.com/Liunian520/parallel_space/main/update_manifest.txt';
 
+/// jsDelivr 对 GitHub 的镜像（国内通常比 raw 更稳）。
+const String kUpdateManifestJsDelivrUrl =
+    'https://cdn.jsdelivr.net/gh/Liunian520/parallel_space@main/update_manifest.txt';
+
+/// ghproxy 反代 raw（国内备用）。
+const String kUpdateManifestGhProxyUrl =
+    'https://ghproxy.net/https://raw.githubusercontent.com/Liunian520/parallel_space/main/update_manifest.txt';
+
+/// 网盘清单永久直链（每次发版由 upload_apk.py 回写为最新 manifestPublicUrl）。
+/// 注意：上一版硬编码的地址在旧清单被删后会 404，属预期；其它源仍可用。
+const String kUpdateManifestDiskUrl =
+    'https://link.liunianai.cn/f/disk/zotatzaxbcu8rtd0nmglzp5pr2/parallel_space_manifest.txt';
+
 /// 清单 / 发版页的分享短链（可能过盾；检查失败或用户选择时用浏览器打开）。
 const String kUpdateShareFallbackUrl = 'https://link.liunianai.cn/n8afhu';
+
+/// HTTP 直连候选（不含 WebView）。顺序即优先级。
+List<String> get kUpdateManifestHttpCandidates => [
+      kUpdateManifestUrl,
+      kUpdateManifestJsDelivrUrl,
+      kUpdateManifestGhProxyUrl,
+      kUpdateManifestDiskUrl,
+    ];
+
+/// 给清单 URL 加上毫秒时间戳，绕过中间缓存。
+String cacheBustUrl(String url, {int? epochMs}) {
+  final t = epochMs ?? DateTime.now().millisecondsSinceEpoch;
+  return url.contains('?') ? '$url&t=$t' : '$url?t=$t';
+}
 
 /// 自动检查最小间隔。
 const Duration kUpdateAutoCheckInterval = Duration(hours: 12);
@@ -20,7 +51,7 @@ const Duration kUpdateAutoCheckInterval = Duration(hours: 12);
 /// 下载超时（整包）。
 const Duration kUpdateDownloadTimeout = Duration(minutes: 15);
 
-/// Manifest 直连超时。
+/// Manifest 直连超时（单源）。
 const Duration kUpdateManifestTimeout = Duration(seconds: 20);
 
 /// WebView 过盾最长等待。

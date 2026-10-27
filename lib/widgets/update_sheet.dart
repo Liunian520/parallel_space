@@ -14,7 +14,7 @@ Future<void> checkForUpdates(BuildContext context, {bool force = true}) async {
   if (!context.mounted) return;
   switch (r.kind) {
     case UpdateCheckResultKind.upToDate:
-      if (force) showGlassSnack(context, '已是最新版本');
+      if (force) showGlassSnack(context, r.message ?? '已是最新版本');
     case UpdateCheckResultKind.skippedInsideWork:
       showGlassSnack(context, r.message ?? '请在主空间检查更新');
     case UpdateCheckResultKind.error:

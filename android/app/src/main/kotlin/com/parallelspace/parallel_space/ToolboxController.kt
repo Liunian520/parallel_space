@@ -148,13 +148,31 @@ object ToolboxController {
         notifyA11y(ctx)
     }
 
-    /** 复制到剪贴板，不自动清除。 */
+    /** 复制到剪贴板，不自动清除。必须在主线程调用 ClipboardManager（HyperOS 上后台线程常无反应）。 */
     fun copyText(ctx: Context, text: String): Boolean {
         if (text.isEmpty()) return false
-        return try {
-            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val app = ctx.applicationContext
+        fun doCopy(): Boolean = try {
+            val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
             true
+        } catch (t: Throwable) {
+            ToolboxCrashLog.append(app, "ERROR", "copyText failed", t)
+            false
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) return doCopy()
+        val box = booleanArrayOf(false)
+        val latch = java.util.concurrent.CountDownLatch(1)
+        handler.post {
+            try {
+                box[0] = doCopy()
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+            box[0]
         } catch (_: Throwable) {
             false
         }

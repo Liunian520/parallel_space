@@ -76,19 +76,37 @@ class UpdateManifest {
 
   bool isNewerThan(int currentVersionCode) => versionCode > currentVersionCode;
 
-  /// 优先按 versionCode 数值比较（12306 > 10305 > 12302 均可正确判断）。
-  /// 若本机 buildNumber 异常偏小，再用 versionName 编码兜底。
+  /// 是否比本机更新。
+  ///
+  /// 1. **优先 versionName**（1.3.x → 12300+patch）：Flutter `--split-per-abi` 会给
+  ///    arm64 加上 2000（12311→14311），若只用 versionCode 会把「清单 12312」判成
+  ///    不如本机，永远「已是最新」。
+  /// 2. 再比清单 versionCode 与本机 buildNumber；并尝试剥掉 1000/2000/3000 的 ABI 偏移。
   bool isNewerThanApp({required int currentCode, required String currentName}) {
-    if (currentCode >= 10000) return versionCode > currentCode;
-    final encoded = _fromName(currentName);
-    if (encoded != null) return versionCode > encoded;
-    return versionCode > currentCode;
+    final curName = _encodeName(currentName);
+    final remoteName = _encodeName(versionName);
+    // versionName 是主判据，可免疫 Flutter split-per-abi 的 +1000/+2000/+3000。
+    if (curName != null && remoteName != null) {
+      return remoteName > curName;
+    }
+    if (versionCode > currentCode) return true;
+    // 名字解析失败时，尝试剥掉 ABI 偏移再比。
+    for (final abi in const [1, 2, 3]) {
+      final base = currentCode - abi * 1000;
+      if (base >= 10000 && versionCode > base) return true;
+    }
+    return false;
   }
 
-  static int? _fromName(String name) {
+  /// 与 [encodeVersionCode] 一致：1.3.x 用 12300+patch。
+  static int? _encodeName(String name) {
     final m = RegExp(r'^(\d+)\.(\d+)\.(\d+)').firstMatch(name.trim());
     if (m == null) return null;
-    return int.parse(m[1]!) * 10000 + int.parse(m[2]!) * 100 + int.parse(m[3]!);
+    final major = int.parse(m[1]!);
+    final minor = int.parse(m[2]!);
+    final patch = int.parse(m[3]!);
+    if (major == 1 && minor == 3) return 12300 + patch;
+    return major * 10000 + minor * 100 + patch;
   }
 
   String get sizeLabel {

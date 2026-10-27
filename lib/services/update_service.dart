@@ -15,28 +15,42 @@ import 'update_manifest.dart';
 enum UpdateCheckResultKind { upToDate, available, skippedInsideWork, error }
 
 class UpdateCheckResult {
-  const UpdateCheckResult(this.kind, {this.manifest, this.message, this.currentCode, this.currentName});
+  const UpdateCheckResult(
+    this.kind, {
+    this.manifest,
+    this.message,
+    this.currentCode,
+    this.currentName,
+    this.sourceUrl,
+  });
   final UpdateCheckResultKind kind;
   final UpdateManifest? manifest;
   final String? message;
   final int? currentCode;
   final String? currentName;
+
+  /// 本次成功拉到清单的源 URL（已含 `?t=` 时为实际请求地址）。
+  final String? sourceUrl;
 }
 
-/// 应用内更新：拉清单 → 比对 versionCode → 下载校验 → 唤起系统安装。
+/// 应用内更新：多源拉清单 → 比对 versionCode → 下载校验 → 唤起系统安装。
 ///
-/// 清单与 APK 均优先走无盾直链；分享短链仅作浏览器回退。
+/// 清单优先 GitHub raw / jsDelivr / ghproxy / 网盘直链（均带防缓存）；分享短链仅作 WebView / 浏览器回退。
 class UpdateService {
   UpdateService(this._prefs);
   final SharedPreferences _prefs;
 
   static const _kAuto = 'upd.auto';
   static const _kLastCheck = 'upd.lastCheckMs';
+  static const _kLastSource = 'upd.lastSourceUrl';
 
   bool get autoCheck => _prefs.getBool(_kAuto) ?? true;
   set autoCheck(bool v) => _prefs.setBool(_kAuto, v);
 
   int get lastCheckMs => _prefs.getInt(_kLastCheck) ?? 0;
+
+  /// 最近一次成功的清单源（调试用）。
+  String? get lastSourceUrl => _prefs.getString(_kLastSource);
 
   bool get dueForAutoCheck {
     if (!autoCheck) return false;
@@ -59,20 +73,26 @@ class UpdateService {
     }
     final cur = await currentVersion();
     try {
-      final raw = await _fetchManifestBody();
-      final decoded = jsonDecode(raw);
+      final fetched = await _fetchManifestBody();
+      final decoded = jsonDecode(fetched.body);
       final m = UpdateManifest.tryParse(decoded);
       if (m == null) {
         return UpdateCheckResult(UpdateCheckResultKind.error,
-            message: '清单无效或缺少必填字段', currentCode: cur.code, currentName: cur.name);
+            message: '清单无效或缺少必填字段', currentCode: cur.code, currentName: cur.name, sourceUrl: fetched.url);
       }
       await _prefs.setInt(_kLastCheck, DateTime.now().millisecondsSinceEpoch);
+      await _prefs.setString(_kLastSource, fetched.url);
       if (!m.isNewerThanApp(currentCode: cur.code, currentName: cur.name)) {
+        final label = cur.name.trim().isNotEmpty ? cur.name.trim() : '${cur.code}';
         return UpdateCheckResult(UpdateCheckResultKind.upToDate,
-            manifest: m, currentCode: cur.code, currentName: cur.name, message: '已是最新版本');
+            manifest: m,
+            currentCode: cur.code,
+            currentName: cur.name,
+            sourceUrl: fetched.url,
+            message: '已是最新版本（当前 $label）');
       }
       return UpdateCheckResult(UpdateCheckResultKind.available,
-          manifest: m, currentCode: cur.code, currentName: cur.name);
+          manifest: m, currentCode: cur.code, currentName: cur.name, sourceUrl: fetched.url);
     } on TimeoutException {
       return UpdateCheckResult(UpdateCheckResultKind.error, message: '清单请求超时', currentCode: cur.code, currentName: cur.name);
     } on SocketException catch (e) {
@@ -84,18 +104,24 @@ class UpdateService {
     }
   }
 
-  /// 先直连清单 URL（GitHub raw / 网盘 `/f/` 永久直链）；若落到 Link 盾 HTML，再尝试 WebView；仍失败则抛错（UI 可开浏览器回退）。
-  Future<String> _fetchManifestBody() async {
-    final primary = await _httpGetBody(kUpdateManifestUrl);
-    if (primary != null) return primary;
+  /// 按候选顺序直连（带 `?t=` + no-cache）；全失败再 WebView 分享短链。
+  Future<({String body, String url})> _fetchManifestBody() async {
+    final epoch = DateTime.now().millisecondsSinceEpoch;
+    for (final base in kUpdateManifestHttpCandidates) {
+      final url = cacheBustUrl(base, epochMs: epoch);
+      final body = await _httpGetBody(url);
+      if (body != null) return (body: body, url: url);
+    }
 
     // 回退：分享短链（可能过盾）
     final viaWeb = await NativeBridge.fetchUpdateManifestViaWeb(kUpdateShareFallbackUrl);
     if (viaWeb != null && viaWeb.trim().isNotEmpty) {
       final t = viaWeb.trimLeft();
-      if (t.startsWith('{') || t.startsWith('[')) return viaWeb;
+      if (t.startsWith('{') || t.startsWith('[')) {
+        return (body: viaWeb, url: 'webview:$kUpdateShareFallbackUrl');
+      }
       final extracted = _extractJsonObject(viaWeb);
-      if (extracted != null) return extracted;
+      if (extracted != null) return (body: extracted, url: 'webview:$kUpdateShareFallbackUrl');
     }
     throw StateError('无法获取更新清单，请稍后重试或用浏览器打开下载页');
   }
@@ -103,7 +129,16 @@ class UpdateService {
   /// GET 并跟随重定向；成功返回 JSON 正文，盾页 / 非 2xx 返回 null。
   Future<String?> _httpGetBody(String url) async {
     try {
-      final res = await http.get(Uri.parse(url)).timeout(kUpdateManifestTimeout);
+      final res = await http
+          .get(
+            Uri.parse(url),
+            headers: const {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+              'Accept': 'application/json, text/plain, */*',
+            },
+          )
+          .timeout(kUpdateManifestTimeout);
       if (res.statusCode < 200 || res.statusCode >= 300) return null;
       final body = utf8.decode(res.bodyBytes);
       final trimmed = body.trimLeft();
@@ -117,6 +152,8 @@ class UpdateService {
     } on SocketException {
       return null;
     } on HttpException {
+      return null;
+    } catch (_) {
       return null;
     }
   }

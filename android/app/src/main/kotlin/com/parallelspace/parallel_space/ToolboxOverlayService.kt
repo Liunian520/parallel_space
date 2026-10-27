@@ -26,6 +26,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -948,137 +949,187 @@ class ToolboxOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
             background = rowBg(pal)
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            minimumHeight = dp(44)
+            clipChildren = false
+            clipToPadding = false
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             gap.topMargin = dp(8)
             layoutParams = gap
-            val title = TextView(this@ToolboxOverlayService).apply {
+
+            addView(TextView(this@ToolboxOverlayService).apply {
                 text = e.label.ifBlank { "未命名" }
                 setTextColor(pal.text)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 typeface = Typeface.DEFAULT_BOLD
-            }
-            val sub = TextView(this@ToolboxOverlayService).apply {
-                text = e.username.ifBlank { "未填写用户名" }
-                setTextColor(pal.sub)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            }
-            val passRow = LinearLayout(this@ToolboxOverlayService).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
+                setPadding(0, 0, 0, dp(6))
+            })
+
+            // 账号行：左侧文案，右侧复制
+            addView(fieldRow(
+                label = "账号",
+                value = e.username.ifBlank { "未填写" },
+                valueColor = pal.sub,
+                trailing = listOf(
+                    iconAction(R.drawable.ic_copy, "复制账号") {
+                        tapFeedback(it)
+                        copyUser(e)
+                    },
+                ),
+            ))
+
             val passTv = TextView(this@ToolboxOverlayService).apply {
-                text = if (e.password.isEmpty()) "未填写密码" else "•".repeat(e.password.length.coerceIn(6, 12))
+                text = maskPass(e.password, show = false)
                 setTextColor(pal.sub)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                maxLines = 2
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val eye = TextView(this@ToolboxOverlayService).apply {
-                text = "显示"
-                setTextColor(pal.accent)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                minimumHeight = dp(44)
-                setOnClickListener {
-                    showPass = !showPass
-                    text = if (showPass) "隐藏" else "显示"
-                    passTv.text = when {
-                        e.password.isEmpty() -> "未填写密码"
-                        showPass -> e.password
-                        else -> "•".repeat(e.password.length.coerceIn(6, 12))
-                    }
-                }
+            val eyeBtn = iconAction(R.drawable.ic_visibility, "显示或隐藏密码") { v ->
+                tapFeedback(v)
+                showPass = !showPass
+                passTv.text = maskPass(e.password, show = showPass)
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap toggle_pass show=$showPass")
             }
-            passRow.addView(passTv)
-            passRow.addView(eye)
-            addView(title)
-            addView(sub)
-            addView(passRow)
-            val actions = LinearLayout(this@ToolboxOverlayService).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(6), 0, 0)
-            }
-            actions.addView(primaryChip("一键填入") { performFill(e) })
-            actions.addView(outlineChip("复制账号") { copyUser(e) })
-            actions.addView(outlineChip("复制密码") { copyPass(e) })
-            addView(actions)
-            setOnLongClickListener {
-                copyPass(e)
-                true
-            }
+            addView(fieldRow(
+                label = "密码",
+                valueView = passTv,
+                trailing = listOf(
+                    eyeBtn,
+                    iconAction(R.drawable.ic_copy, "复制密码") {
+                        tapFeedback(it)
+                        copyPass(e)
+                    },
+                ),
+            ))
+
+            addView(primaryFillButton("一键填入") {
+                tapFeedback(it)
+                performFill(e)
+            })
         }
     }
 
-    private fun primaryChip(text: String, onClick: () -> Unit): TextView {
+    private fun maskPass(password: String, show: Boolean): String = when {
+        password.isEmpty() -> "未填写"
+        show -> password
+        else -> "•".repeat(password.length.coerceIn(6, 12))
+    }
+
+    private fun fieldRow(
+        label: String,
+        value: String? = null,
+        valueView: TextView? = null,
+        valueColor: Int = Palette(this).sub,
+        trailing: List<View>,
+    ): LinearLayout {
+        val pal = Palette(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(44)
+            setPadding(0, dp(2), 0, dp(2))
+            addView(TextView(this@ToolboxOverlayService).apply {
+                text = label
+                setTextColor(pal.accent)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(dp(40), LinearLayout.LayoutParams.WRAP_CONTENT)
+            })
+            val vv = valueView ?: TextView(this@ToolboxOverlayService).apply {
+                text = value.orEmpty()
+                setTextColor(valueColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                maxLines = 2
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            if (vv.layoutParams == null) {
+                vv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            addView(vv)
+            for (t in trailing) addView(t)
+        }
+    }
+
+    private fun iconAction(drawable: Int, desc: String, onClick: (View) -> Unit): ImageView {
+        val pal = Palette(this)
+        val size = dp(44)
+        return ImageView(this).apply {
+            setImageResource(drawable)
+            contentDescription = desc
+            isClickable = true
+            isFocusable = true
+            imageTintList = android.content.res.ColorStateList.valueOf(pal.accent)
+            val pad = dp(10)
+            setPadding(pad, pad, pad, pad)
+            background = circle(if (pal.night) 0x22FFFFFF.toInt() else 0x142F7CF6.toInt())
+            layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = dp(2) }
+            setOnClickListener { v -> onClick(v) }
+        }
+    }
+
+    private fun primaryFillButton(text: String, onClick: (View) -> Unit): TextView {
         val pal = Palette(this)
         return TextView(this).apply {
             this.text = text
             setTextColor(0xFFFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             gravity = Gravity.CENTER
-            background = round(pal.accent, dp(16).toFloat())
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = round(pal.accent, dp(18).toFloat())
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             minimumHeight = dp(44)
-            setOnClickListener { onClick() }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.marginEnd = dp(8)
+            isClickable = true
+            isFocusable = true
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = dp(10)
             layoutParams = lp
+            setOnClickListener { v -> onClick(v) }
         }
     }
 
-    private fun outlineChip(text: String, onClick: () -> Unit): TextView {
-        val pal = Palette(this)
-        return TextView(this).apply {
-            this.text = text
-            setTextColor(pal.accent)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setColor(if (pal.night) 0x22FFFFFF.toInt() else 0x142F7CF6.toInt())
-                setStroke(dp(1).coerceAtLeast(1), (pal.accent and 0x00FFFFFF.toInt()) or 0x66000000.toInt())
-            }
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            minimumHeight = dp(44)
-            setOnClickListener { onClick() }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.marginEnd = dp(6)
-            layoutParams = lp
+    private fun tapFeedback(v: View) {
+        try {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        } catch (_: Throwable) {
         }
     }
 
     private fun performFill(e: VaultStore.Entry) {
-        // 收起面板，再填入（悬浮窗始终 NOT_FOCUSABLE，分身保持焦点）。
+        ToolboxCrashLog.append(this, "INFO", "tap fill id=${e.id} userLen=${e.username.length} passLen=${e.password.length}")
+        // 先收起面板，避免无障碍读到悬浮窗；再填入。
         if (expanded) collapse()
         handler.postDelayed({
             runBg {
                 val r = try {
-                    ToolboxController.fill(this, e.username, e.password)
-                } catch (_: Throwable) {
+                    ToolboxController.fill(this@ToolboxOverlayService, e.username, e.password)
+                } catch (t: Throwable) {
+                    ToolboxCrashLog.append(this@ToolboxOverlayService, "ERROR", "tap fill crashed", t)
                     "error"
                 }
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap fill result=$r")
                 handler.post { toast(fillMessage(r)) }
             }
-        }, 320)
+        }, 360)
     }
 
     private fun copyUser(e: VaultStore.Entry) {
+        ToolboxCrashLog.append(this, "INFO", "tap copy_account id=${e.id} empty=${e.username.isEmpty()}")
         val ok = ToolboxController.copyText(this, e.username)
+        ToolboxCrashLog.append(this, "INFO", "tap copy_account ok=$ok")
         toast(if (ok) "已复制账号" else if (e.username.isEmpty()) "没有账号可复制" else "复制失败")
     }
 
     private fun copyPass(e: VaultStore.Entry) {
+        ToolboxCrashLog.append(this, "INFO", "tap copy_password id=${e.id} empty=${e.password.isEmpty()}")
         val ok = ToolboxController.copyText(this, e.password)
-        toast(if (ok) "已复制密码，长按输入框粘贴" else if (e.password.isEmpty()) "没有密码可复制" else "复制失败")
+        ToolboxCrashLog.append(this, "INFO", "tap copy_password ok=$ok")
+        toast(if (ok) "已复制密码" else if (e.password.isEmpty()) "没有密码可复制" else "复制失败")
     }
 
     private fun fillMessage(r: String) = when (r) {
-        "filled" -> "已填入当前输入框"
-        "copied" -> "未开启无障碍，已复制密码，长按输入框粘贴"
-        "copied_no_field" -> "没有找到输入框，已复制密码，长按输入框粘贴"
+        "filled" -> "已填入"
+        "copied" -> "无障碍未开启，已复制，请粘贴"
+        "copied_no_field" -> "未找到输入框，已复制"
         "copied_user" -> "已复制账号"
-        "copied_pass" -> "已复制密码，长按输入框粘贴"
+        "copied_pass" -> "已复制密码"
         else -> "填入失败"
     }
 
@@ -1299,10 +1350,15 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun toast(text: String) {
-        try {
-            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-        } catch (_: Throwable) {
+        val show = {
+            try {
+                Toast.makeText(applicationContext, text, Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                ToolboxCrashLog.append(this, "WARN", "toast failed msg=$text", t)
+            }
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) show()
+        else handler.post { show() }
     }
 
     private fun logWatch(msg: String) {
