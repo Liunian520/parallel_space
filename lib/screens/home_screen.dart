@@ -18,6 +18,7 @@ import '../widgets/work_onboarding.dart';
 import 'add_clone_screen.dart';
 import 'clone_detail_screen.dart';
 import 'private_space_screen.dart';
+import 'vault_screen.dart';
 
 /// 移除分身：在工作资料中隐藏该应用（数据保留，可再次复制恢复）。若正在模拟定位则先停止。
 Future<bool> deleteClone(BuildContext context, CloneApp c) async {
@@ -151,6 +152,8 @@ class HomeScreen extends StatelessWidget {
                   ]),
                 ),
               ),
+              if (ready)
+                headerButton(Icons.key_rounded, '密码本', () => openVaultScreen(context)),
               if (ready)
                 headerButton(Icons.lock_person_rounded, '私密空间',
                     () => Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const PrivateSpaceScreen()))),

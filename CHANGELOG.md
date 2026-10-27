@@ -1,6 +1,23 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.11（versionCode 12311），下一次是 1.3.12（12312）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.12（versionCode 12312），下一次是 1.3.13（12313）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.12] - 2026-10-28
+
+### 修复
+
+- **保存后看不到账号（根因）**：1.3.11 的 `ToolboxEditActivity` 跑在独立进程 `:toolbox_edit`。SharedPreferences 跨进程不可靠；即便写了 `vault_plain.json`，主进程悬浮窗缓存 / 广播时机也容易对不上，表现为「Toast 已保存，列表仍空」。
+- **1.3.12 对策**：密码本唯一真相源定为 `filesDir/vault_plain.json`（原子写入）。加载时合并 SharedPreferences 备份、文件与旧版 `vault.enc`，同 id 以文件为准，并写回文件。变更后广播 `VAULT_CHANGED`，悬浮窗用广播 + `FileObserver` 刷新。
+
+### 体验
+
+- **密码本改回 App 内管理**：主页、设置、分身详情均可进入「密码本」；支持按分身分组、搜索、添加/编辑/删除、备注名/账号/密码/备注、密码可见切换、复制。不设生物识别门禁。
+- **悬浮工具箱只读**：去掉添加/编辑/删除与 `ToolboxEditActivity`（及 `:toolbox_edit` 进程）。保留一键填入、复制账号/密码、显示/隐藏密码；空状态与按钮「去密码本添加」会打开 App 密码本并预填当前分身。
+- 保留 1.3.11 的 tick 防抖、AppOps 交叉验证、崩溃日志、START_STICKY、看门狗、悬浮窗永久 `NOT_FOCUSABLE`。
+
+### 其他
+
+- 版本 `1.3.12+12312`。
 
 ## [1.3.11] - 2026-10-28
 

@@ -43,14 +43,8 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * 分身在前台时显示的可拖动、可收起悬浮窗。
  *
- * 1.3.11：
- * - 悬浮窗永久 FLAG_NOT_FOCUSABLE，不再承载任何 EditText；添加/编辑走
- *   独立 [ToolboxEditActivity]（`:toolbox_edit` 进程）。
- * - 诊断日志证实「输入密码后消失」主因是 tick 读到 enabled/overlay 瞬假后
- *   立刻 stopSelf（非崩溃）。现改为连续 3 次且 ≥10s 才停，且 overlay 须
- *   Settings+AppOps 双否；用户关闭走 [ACTION_USER_STOP]。
- *
- * 保留：START_STICKY、看门狗、reason= 日志、/proc 兜底、STICKY_MS。
+ * 1.3.12：只读密码本（查看 / 一键填入 / 复制）；添加与编辑在主应用「密码本」页。
+ * 保留 1.3.11：FLAG_NOT_FOCUSABLE、tick 防抖、AppOps 交叉验证、START_STICKY、看门狗。
  */
 class ToolboxOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -74,12 +68,8 @@ class ToolboxOverlayService : Service() {
     /** 视图代数：removeView / 重建时递增，避免旧动画回调整坏新窗。 */
     private var viewGen = 0
     private var edgeAnimator: android.animation.ValueAnimator? = null
-    /**
-     * 编辑 Activity 打开期间钉住：禁止 hideOverlay / 因「分身不可见」拆窗。
-     * 由 [ToolboxEditActivity] 的广播置位/清除。
-     */
-    private var editingActivityPinned = false
-    private var editReceiver: BroadcastReceiver? = null
+    private var vaultReceiver: BroadcastReceiver? = null
+    private var vaultObserver: android.os.FileObserver? = null
     /** tick 连续读到 enabled/overlay 否定的次数；单次瞬假绝不 stopSelf。 */
     private var denyStreak = 0
     private var denySince = 0L
@@ -101,7 +91,7 @@ class ToolboxOverlayService : Service() {
         super.onCreate()
         ToolboxCrashLog.installHandler(this, "overlay")
         ToolboxCrashLog.append(this, "INFO", "overlay onCreate sdk=${Build.VERSION.SDK_INT}")
-        registerEditReceiver()
+        registerVaultListener()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -175,7 +165,7 @@ class ToolboxOverlayService : Service() {
         } catch (_: Throwable) {
         }
         edgeAnimator = null
-        unregisterEditReceiver()
+        unregisterVaultListener()
         if (ToolboxController.onVaultAuthedListener != null) ToolboxController.onVaultAuthedListener = null
         removeView()
         // 不 shutdownNow：sticky 重启可能复用同一进程内的排队任务；让空闲守护线程自然回收
@@ -202,7 +192,7 @@ class ToolboxOverlayService : Service() {
         }
 
         // 面板展开或编辑 Activity 打开：绝不因「分身不可见」拆窗
-        if (expanded || editingActivityPinned) {
+        if (expanded) {
             ensureView(force = root == null || root?.isAttachedToWindow != true)
             return
         }
@@ -254,10 +244,10 @@ class ToolboxOverlayService : Service() {
         ToolboxCrashLog.append(
             this,
             "WARN",
-            "tick deny #$denyStreak elapsed=${elapsed}ms enabled=$enabled settingsOverlay=$settingsOverlay appOpsOverlay=$appOpsOverlay pinned=$editingActivityPinned expanded=$expanded",
+            "tick deny #$denyStreak elapsed=${elapsed}ms enabled=$enabled settingsOverlay=$settingsOverlay appOpsOverlay=$appOpsOverlay pinned=false expanded=$expanded",
         )
         // 编辑页打开或面板展开时：只记日志，绝不因瞬假停服
-        if (editingActivityPinned || expanded) return false
+        if (expanded) return false
         if (denyStreak < DENY_STREAK_MIN || elapsed < DENY_WINDOW_MS) return false
 
         // 再读一次，避免阈值刚过就停在抖动上
@@ -368,7 +358,7 @@ class ToolboxOverlayService : Service() {
     private fun ensureViewInner(force: Boolean) {
         if (root != null && root?.isAttachedToWindow == true && !force) return
         if (force && root != null) {
-            ToolboxCrashLog.append(this, "INFO", "ensureView force re-add reason=watchdog_or_attach mode=$mode pinned=$editingActivityPinned")
+            ToolboxCrashLog.append(this, "INFO", "ensureView force re-add reason=watchdog_or_attach mode=$mode pinned=false")
             removeView()
         }
         if (root != null) return
@@ -428,10 +418,6 @@ class ToolboxOverlayService : Service() {
         bubbleView.setOnTouchListener(dragListener { toggle() })
         holder.setOnTouchListener { _, e ->
             if (expanded && e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                if (editingActivityPinned) {
-                    ToolboxCrashLog.append(this, "INFO", "ignore outside_tap reason=editing_activity")
-                    return@setOnTouchListener true
-                }
                 ToolboxCrashLog.append(this, "INFO", "collapse reason=outside_tap")
                 collapse()
                 true
@@ -453,18 +439,10 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun hideOverlay(reason: String) {
-        if (editingActivityPinned) {
-            ToolboxCrashLog.append(
-                this,
-                "INFO",
-                "skip hideOverlay reason=editing_activity requested=$reason expanded=$expanded mode=$mode",
-            )
-            return
-        }
         ToolboxCrashLog.append(
             this,
             "INFO",
-            "hideOverlay reason=$reason expanded=$expanded mode=$mode pinned=$editingActivityPinned",
+            "hideOverlay reason=$reason expanded=$expanded mode=$mode",
         )
         removeView()
     }
@@ -582,11 +560,6 @@ class ToolboxOverlayService : Service() {
             } catch (t: Throwable) {
                 Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
                 ToolboxCrashLog.append(this, "ERROR", "updateViewLayout applyVisibility", t)
-                if (editingActivityPinned) {
-                    ToolboxCrashLog.append(this, "WARN", "keep overlay after applyVisibility fail reason=editing_activity")
-                } else {
-                    hideOverlay("apply_visibility_update_failed")
-                }
             }
         } catch (t: Throwable) {
             ToolboxCrashLog.append(this, "ERROR", "applyVisibility failed", t)
@@ -679,9 +652,8 @@ class ToolboxOverlayService : Service() {
         } catch (t: Throwable) {
             Log.w(TAG, "updateViewLayout in ensureOverlayFlags failed", t)
             ToolboxCrashLog.append(this, "ERROR", "updateViewLayout ensureOverlayFlags", t)
-            if (!editingActivityPinned) {
-                hideOverlay("ensure_flags_update_failed")
-            }
+            // 不拆窗：仅记日志，下一拍看门狗再处理
+            ToolboxCrashLog.append(this, "WARN", "ensure_flags_update_failed kept bubble")
         }
     }
 
@@ -702,85 +674,101 @@ class ToolboxOverlayService : Service() {
         }
     }
 
-    private fun registerEditReceiver() {
-        if (editReceiver != null) return
-        val r = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val action = intent?.action ?: return
-                handler.post {
-                    when (action) {
-                        ToolboxEditActivity.ACTION_EDIT_STARTED -> {
-                            editingActivityPinned = true
-                            ToolboxCrashLog.append(
-                                this@ToolboxOverlayService,
-                                "INFO",
-                                "pin reason=editing_activity",
-                            )
-                            ensureView(force = root == null || root?.isAttachedToWindow != true)
+    private fun registerVaultListener() {
+        if (vaultReceiver == null) {
+            val r = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action != VaultStore.ACTION_VAULT_CHANGED) return
+                    handler.post {
+                        try {
+                            VaultStore.invalidateCache()
+                        } catch (_: Throwable) {
                         }
-                        ToolboxEditActivity.ACTION_EDIT_FINISHED -> {
-                            editingActivityPinned = false
-                            ToolboxCrashLog.append(
-                                this@ToolboxOverlayService,
-                                "INFO",
-                                "unpin reason=editing_activity_finished",
-                            )
-                        }
-                        ToolboxEditActivity.ACTION_VAULT_CHANGED -> {
-                            try {
-                                VaultStore.lock()
-                            } catch (_: Throwable) {
-                            }
-                            refreshVaultAsync(thenRebuild = true)
-                            ToolboxCrashLog.append(
-                                this@ToolboxOverlayService,
-                                "INFO",
-                                "vault refreshed after edit activity",
-                            )
-                        }
+                        refreshVaultAsync(thenRebuild = true)
+                        ToolboxCrashLog.append(
+                            this@ToolboxOverlayService,
+                            "INFO",
+                            "vault refreshed reason=broadcast",
+                        )
                     }
                 }
             }
-        }
-        editReceiver = r
-        val filter = IntentFilter().apply {
-            addAction(ToolboxEditActivity.ACTION_EDIT_STARTED)
-            addAction(ToolboxEditActivity.ACTION_EDIT_FINISHED)
-            addAction(ToolboxEditActivity.ACTION_VAULT_CHANGED)
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(r, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                registerReceiver(r, filter)
+            vaultReceiver = r
+            val filter = IntentFilter(VaultStore.ACTION_VAULT_CHANGED)
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(r, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    registerReceiver(r, filter)
+                }
+            } catch (err: Throwable) {
+                ToolboxCrashLog.append(this, "ERROR", "registerVaultListener", err)
+                vaultReceiver = null
             }
-        } catch (t: Throwable) {
-            ToolboxCrashLog.append(this, "ERROR", "registerEditReceiver", t)
-            editReceiver = null
         }
+        startVaultFileObserver()
     }
 
-    private fun unregisterEditReceiver() {
-        val r = editReceiver ?: return
-        editReceiver = null
+    private fun unregisterVaultListener() {
+        val r = vaultReceiver
+        vaultReceiver = null
+        if (r != null) {
+            try {
+                unregisterReceiver(r)
+            } catch (_: Throwable) {
+            }
+        }
         try {
-            unregisterReceiver(r)
+            vaultObserver?.stopWatching()
         } catch (_: Throwable) {
         }
+        vaultObserver = null
     }
 
-    private fun openEditActivity(entryId: String? = null) {
-        editingActivityPinned = true
-        ToolboxCrashLog.append(this, "INFO", "pin reason=editing_activity launch id=${entryId ?: "new"}")
-        ToolboxEditActivity.open(
-            this,
-            pkg = pkg,
-            entryId = entryId,
-            appLabel = resolvedLabel,
-        )
+    private fun startVaultFileObserver() {
+        if (vaultObserver != null) return
+        val dir = try {
+            filesDir?.absolutePath
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        try {
+            @Suppress("DEPRECATION")
+            val obs = object : android.os.FileObserver(
+                dir,
+                android.os.FileObserver.CLOSE_WRITE or
+                    android.os.FileObserver.MOVED_TO or
+                    android.os.FileObserver.MODIFY,
+            ) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path != VaultStore.FILE_JSON && path != (VaultStore.FILE_JSON + ".tmp")) return
+                    handler.post {
+                        try {
+                            VaultStore.invalidateCache()
+                        } catch (_: Throwable) {
+                        }
+                        refreshVaultAsync(thenRebuild = expanded && mode == Mode.VAULT)
+                    }
+                }
+            }
+            vaultObserver = obs
+            obs.startWatching()
+        } catch (err: Throwable) {
+            ToolboxCrashLog.append(this, "WARN", "vault FileObserver failed", err)
+            vaultObserver = null
+        }
     }
 
+    private fun openPasswordBook() {
+        try {
+            startActivity(MainActivity.vaultLaunchIntent(this, pkg))
+            ToolboxCrashLog.append(this, "INFO", "open password book pkg=$pkg")
+        } catch (err: Throwable) {
+            ToolboxCrashLog.append(this, "ERROR", "open password book failed", err)
+            toast("无法打开密码本")
+        }
+    }
     @SuppressLint("ClickableViewAccessibility")
     private fun header(title: String, action: String, onAction: () -> Unit): LinearLayout {
         val pal = Palette(this)
@@ -866,6 +854,10 @@ class ToolboxOverlayService : Service() {
             panel.addView(toolRow(tool.title, tool.summary) {
                 if (tool.id == "vault") {
                     mode = Mode.VAULT
+                    try {
+                        VaultStore.invalidateCache()
+                    } catch (_: Throwable) {
+                    }
                     refreshVaultAsync(thenRebuild = true)
                 } else {
                     toast("这个工具还没接上")
@@ -895,25 +887,28 @@ class ToolboxOverlayService : Service() {
                 gravity = Gravity.CENTER
             })
             addView(TextView(this@ToolboxOverlayService).apply {
-                text = "添加后可一键填入，或分别复制账号和密码"
+                text = "请到平行空间 App 的「密码本」里添加。工具箱只负责查看、一键填入和复制。"
                 setTextColor(pal.sub)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 gravity = Gravity.CENTER
                 setPadding(0, dp(4), 0, dp(8))
             })
+            addView(button("去密码本添加") { openPasswordBook() })
         }
     }
 
     private fun buildVault(panel: LinearLayout) {
         ensureOverlayFlags()
-        panel.addView(header("账号密码本", "返回") {
+        panel.addView(header("密码本", "返回") {
             mode = Mode.TOOLS
             rebuild("vault_back")
         })
-        val entries = vaultCache.get()
-        panel.addView(button("添加账号") {
-            openEditActivity(null)
-        })
+        refreshVaultAsync(thenRebuild = false)
+        panel.addView(button("去密码本添加") { openPasswordBook() })
+        val forCurrent = vaultCache.get().filter { e ->
+            pkg.isNotBlank() && (e.pkg == pkg || e.cloneUid == "w:$pkg" || e.cloneUid == pkg)
+        }
+        val entries = if (forCurrent.isNotEmpty()) forCurrent else vaultCache.get()
         val scroll = ScrollView(this)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val groups = entries.groupBy { it.groupKey }
@@ -923,6 +918,13 @@ class ToolboxOverlayService : Service() {
         }.thenBy { it })
         if (keys.isEmpty()) {
             col.addView(emptyVault())
+        } else if (forCurrent.isEmpty() && pkg.isNotBlank() && entries.isNotEmpty()) {
+            col.addView(TextView(this).apply {
+                text = "当前分身还没有账号，下面是其他分身的条目。"
+                setTextColor(Palette(this@ToolboxOverlayService).sub)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(0, dp(4), 0, dp(8))
+            })
         }
         for (key in keys) {
             val list = groups[key].orEmpty().sortedBy { it.label }
@@ -1001,14 +1003,6 @@ class ToolboxOverlayService : Service() {
             actions.addView(outlineChip("复制账号") { copyUser(e) })
             actions.addView(outlineChip("复制密码") { copyPass(e) })
             addView(actions)
-            val more = LinearLayout(this@ToolboxOverlayService).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            more.addView(link("编辑") {
-                openEditActivity(e.id)
-            })
-            more.addView(link("删除") { confirmDelete(e) })
-            addView(more)
             setOnLongClickListener {
                 copyPass(e)
                 true
@@ -1052,22 +1046,6 @@ class ToolboxOverlayService : Service() {
             lp.marginEnd = dp(6)
             layoutParams = lp
         }
-    }
-
-    private fun confirmDelete(e: VaultStore.Entry) {
-        val panel = card ?: return
-        panel.addView(body("删除「${e.label}」？"))
-        panel.addView(button("确认删除") {
-            runBg {
-                try {
-                    VaultStore.delete(this, e.id)
-                } catch (_: Throwable) {
-                    handler.post { toast("删除失败") }
-                    return@runBg
-                }
-                refreshVaultAsync(thenRebuild = true)
-            }
-        })
     }
 
     private fun performFill(e: VaultStore.Entry) {

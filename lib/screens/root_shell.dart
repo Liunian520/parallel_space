@@ -11,6 +11,7 @@ import '../widgets/blob_background.dart';
 import '../widgets/floating_nav_bar.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
+import 'vault_screen.dart';
 import '../services/update_service.dart';
 import '../state/settings_store.dart';
 import '../widgets/update_sheet.dart';
@@ -43,6 +44,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           await NativeBridge.setToolboxEnabled(true);
         }
       },
+      onOpenVault: _openVault,
     );
     _freezeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _autoFreeze());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -54,6 +56,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       await _syncMock();
       final id = await NativeBridge.launchCloneId();
       if (id != null) _openFromShortcut(id);
+      final vault = await NativeBridge.launchVault();
+      if (vault != null && vault['open'] == true) {
+        _openVault(vault['pkg'] is String ? vault['pkg'] as String : '');
+      }
       _autoFreeze();
       if (!mounted) return;
       final settings = context.read<SettingsStore>();
@@ -116,6 +122,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     } finally {
       _freezing = false;
     }
+  }
+
+  /// 工具箱「去密码本添加」→ 打开密码本（可预填当前分身）。
+  void _openVault(String pkg) {
+    final nav = widget.navigatorKey.currentState;
+    if (nav == null || !mounted) return;
+    nav.popUntil((r) => r.isFirst);
+    openVaultScreen(nav.context, initialPackage: pkg, openEditor: pkg.isNotEmpty);
   }
 
   /// 桌面快捷方式 / 小组件 → 打开对应分身。

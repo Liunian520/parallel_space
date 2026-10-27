@@ -35,6 +35,8 @@ import java.io.File
 class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
     private var pendingCloneId: String? = null
+    private var pendingOpenVault: Boolean = false
+    private var pendingVaultPkg: String? = null
 
     /** 等待 Activity 结果的 Flutter 调用（每个请求码最多一个）。 */
     private val pending = HashMap<Int, MethodChannel.Result>()
@@ -64,6 +66,13 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         val fromHistory = ((intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
         pendingCloneId = if (fromHistory) null else intent?.getStringExtra(EXTRA_CLONE_ID)
+        if (!fromHistory) {
+            pendingOpenVault = intent?.getBooleanExtra(EXTRA_OPEN_VAULT, false) == true
+            pendingVaultPkg = intent?.getStringExtra(EXTRA_VAULT_PKG)
+        } else {
+            pendingOpenVault = false
+            pendingVaultPkg = null
+        }
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel = ch
         val cb: () -> Unit = { runOnUiThread { channel?.invokeMethod("mockChanged", null) } }
@@ -76,6 +85,13 @@ class MainActivity : FlutterFragmentActivity() {
                     "getLaunchCloneId" -> {
                         result.success(pendingCloneId)
                         pendingCloneId = null
+                    }
+                    "getLaunchVault" -> {
+                        val open = pendingOpenVault
+                        val pkg = pendingVaultPkg
+                        pendingOpenVault = false
+                        pendingVaultPkg = null
+                        result.success(if (open) mapOf("open" to true, "pkg" to (pkg ?: "")) else null)
                     }
                     "pinShortcut" -> result.success(
                         Shortcuts.pin(
@@ -222,6 +238,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getStringExtra(EXTRA_CLONE_ID)?.let { channel?.invokeMethod("openClone", it) }
+        handleOpenVault(intent)
         handleOpenCompat(intent)
     }
 
@@ -641,6 +658,8 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         const val CHANNEL = "parallel_space/native"
         const val EXTRA_CLONE_ID = "clone_id"
+        const val EXTRA_OPEN_VAULT = "open_vault"
+        const val EXTRA_VAULT_PKG = "vault_pkg"
         private const val REQ_PROVISION = 41
         private const val REQ_SAVE = 42
         private const val REQ_OPEN = 43
@@ -657,6 +676,20 @@ class MainActivity : FlutterFragmentActivity() {
                 data = "parallelspace://clone/$id".toUri() // 让每个分身的 PendingIntent 互不覆盖
                 putExtra(EXTRA_CLONE_ID, id)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+
+        /** 从工具箱打开主应用密码本页（可预填当前分身包名）。 */
+        fun vaultLaunchIntent(ctx: Context, pkg: String = ""): Intent =
+            Intent(ctx, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = "parallelspace://vault".toUri()
+                putExtra(EXTRA_OPEN_VAULT, true)
+                putExtra(EXTRA_VAULT_PKG, pkg)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                )
             }
     }
 }

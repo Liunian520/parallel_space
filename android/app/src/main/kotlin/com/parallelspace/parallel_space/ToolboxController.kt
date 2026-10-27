@@ -38,8 +38,8 @@ object ToolboxCatalog {
 
 class PasswordVaultTool : ToolboxTool {
     override val id = "vault"
-    override val title = "账号密码本"
-    override val summary = "保存账号密码，一点即可填入或复制"
+    override val title = "密码本"
+    override val summary = "查看本分身账号，一键填入或复制；添加请到 App 密码本"
 }
 
 /**
@@ -202,7 +202,7 @@ object ToolboxController {
             "openUrl" -> result.success(openUrl(activity, call.argument<String>("url") ?: ""))
             "vaultUnlock" -> VaultAuth.prompt(activity) { result.success(it) }
             "vaultLock" -> {
-                VaultStore.lock()
+                VaultStore.invalidateCache()
                 result.success("ok")
             }
             "vaultList" -> result.success(listPayload(activity))

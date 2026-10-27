@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.11 → 12311', () {
-    expect(kAppVersionName, '1.3.11');
-    expect(kAppVersionCode, 12311);
-    expect(encodeVersionCode(1, 3, 11), kAppVersionCode);
-    expect(versionCodeFromName('1.3.11'), 12311);
-    expect(encodeVersionCode(1, 3, 11), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 11), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 11), greaterThan(12310));
+  test('版本号只加最后一位：1.3.12 → 12312', () {
+    expect(kAppVersionName, '1.3.12');
+    expect(kAppVersionCode, 12312);
+    expect(encodeVersionCode(1, 3, 12), kAppVersionCode);
+    expect(versionCodeFromName('1.3.12'), 12312);
+    expect(encodeVersionCode(1, 3, 12), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 12), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 12), greaterThan(12311));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -55,6 +55,34 @@ void main() {
     expect(groups.single.entries.map((e) => e.label), ['a', 'b']);
   });
 
+  test('合并多源密码本：文件覆盖 prefs，同 id 不丢条目', () {
+    final prefs = [
+      {'id': 'a', 'pkg': 'com.x', 'label': '旧', 'user': 'u1', 'pass': 'p1'},
+      {'id': 'b', 'pkg': 'com.y', 'label': '仅 prefs', 'user': 'u2', 'pass': 'p2'},
+    ];
+    final file = [
+      {'id': 'a', 'pkg': 'com.x', 'label': '新', 'user': 'u1', 'pass': 'p1'},
+      {'id': 'c', 'pkg': 'com.z', 'label': '仅文件', 'user': 'u3', 'pass': 'p3'},
+    ];
+    final merged = mergeVaultSources([prefs, file]);
+    final byId = {for (final e in merged) e['id']!: e};
+    expect(byId.keys.toSet(), {'a', 'b', 'c'});
+    expect(byId['a']!['label'], '新');
+    expect(byId['b']!['label'], '仅 prefs');
+    expect(byId['c']!['label'], '仅文件');
+  });
+
+  test('密码本搜索过滤备注名和账号', () {
+    const items = [
+      VaultEntry(id: '1', packageName: 'com.a', cloneUid: 'w:com.a', label: '主号', username: 'alice', password: 'x', note: '宿舍'),
+      VaultEntry(id: '2', packageName: 'com.b', cloneUid: 'w:com.b', label: '工作', username: 'bob', password: 'y'),
+    ];
+    expect(filterVaultEntries(items, 'alice').single.label, '主号');
+    expect(filterVaultEntries(items, '宿舍').single.id, '1');
+    expect(filterVaultEntries(items, 'com.b').single.label, '工作');
+    expect(filterVaultEntries(items, ''), hasLength(2));
+  });
+
   test('工具箱开关写入设置，备份不含密码', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -76,7 +104,10 @@ void main() {
     await t.pumpWidget(buildProviders(prefs, child: const MaterialApp(home: SettingsScreen())));
     await settle(t);
     expect(find.text('工具箱'), findsWidgets);
-    expect(find.text('机型适配检查'), findsOneWidget);
+    expect(find.text('密码本'), findsWidgets);
+    await t.scrollUntilVisible(find.text('机型适配检查'), 300, scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('机型适配检查'));
+    await settle(t, 5);
 
     await t.tap(find.text('机型适配检查'));
     await settle(t);
@@ -88,9 +119,12 @@ void main() {
     expect(native.methods, contains('compatOpen'));
 
     Navigator.of(t.element(find.byType(CompatScreen))).pop();
-    await settle(t);
-    await t.tap(find.text('分身运行时的悬浮小窗，第一项是账号密码本'));
-    await settle(t);
+    await settle(t, 30);
+    // 「工具箱」在「机型适配」上方，弹回后滚到顶部再点 ListTile
+    await t.drag(find.byType(Scrollable).first, const Offset(0, 800));
+    await settle(t, 10);
+    await t.tap(find.widgetWithText(ListTile, '工具箱'));
+    await settle(t, 30);
     expect(find.byType(ToolboxScreen), findsOneWidget);
     await t.tap(find.descendant(of: find.byType(ToolboxScreen), matching: find.byType(Switch)));
     await settle(t);
@@ -105,7 +139,7 @@ void main() {
     await t.scrollUntilVisible(find.text('本项目开源'), 400);
     expect(find.textContaining('流年似水'), findsOneWidget);
     expect(find.text('https://github.com/Liunian520/parallel_space'), findsOneWidget);
-    expect(find.textContaining('1.3.11'), findsWidgets);
+    expect(find.textContaining('1.3.12'), findsWidgets);
   });
 
   testWidgets('密码本可以直接添加、分组和删除', (t) async {
@@ -120,15 +154,19 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await t.pumpWidget(buildProviders(prefs, child: const MaterialApp(home: VaultScreen())));
     await settle(t, 30);
-    expect(find.text('还没有账号。可以按分身或包名分别保存。'), findsOneWidget);
+    expect(find.text('还没有账号'), findsOneWidget);
 
     await t.tap(find.text('添加'));
-    await settle(t);
-    await t.enterText(find.widgetWithText(TextField, '名称'), '工作号');
-    await t.enterText(find.widgetWithText(TextField, '用户名 / 手机 / 学号'), 'wx');
-    await t.enterText(find.widgetWithText(TextField, '密码'), 'secret');
-    await t.tap(find.text('保存'));
     await settle(t, 30);
+    expect(find.text('添加账号'), findsWidgets);
+    // 0 = 页面搜索框；其后为备注名 / 账号 / 密码 / 备注
+    final fields = find.byType(TextField);
+    expect(fields, findsAtLeastNWidgets(4));
+    await t.enterText(fields.at(1), '工作号');
+    await t.enterText(fields.at(2), 'wx');
+    await t.enterText(fields.at(3), 'secret');
+    await t.tap(find.widgetWithText(FilledButton, '保存'));
+    await settle(t, 40);
 
     expect(find.text('工作号'), findsOneWidget);
     expect(find.textContaining('当前分身'), findsOneWidget);
@@ -140,6 +178,6 @@ void main() {
     await settle(t);
     await t.tap(find.widgetWithText(FilledButton, '删除'));
     await settle(t, 30);
-    expect(find.text('还没有账号。可以按分身或包名分别保存。'), findsOneWidget);
+    expect(find.text('还没有账号'), findsOneWidget);
   });
 }

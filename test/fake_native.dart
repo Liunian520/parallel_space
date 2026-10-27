@@ -232,6 +232,8 @@ class FakeNative {
         if (vaultUnlockResult != 'ok') return vaultUnlockResult;
         vaultOpen = true;
         return 'ok';
+      case 'getLaunchVault':
+        return null;
       case 'vaultList':
         return {'locked': false, 'entries': vault};
       case 'vaultUpsert':
@@ -244,7 +246,7 @@ class FakeNative {
           'label': a['label'] is String && (a['label'] as String).trim().isNotEmpty ? a['label'] : '未命名',
           'user': a['user'] ?? '',
           'pass': a['pass'] ?? '',
-          'note': '',
+          'note': a['note'] ?? '',
         });
         return 'ok';
       case 'vaultDelete':

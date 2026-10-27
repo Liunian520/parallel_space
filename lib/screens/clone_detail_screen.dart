@@ -13,6 +13,7 @@ import '../widgets/location_section.dart';
 import '../widgets/section_tile.dart';
 import '../widgets/text_input_dialog.dart';
 import 'home_screen.dart';
+import 'vault_screen.dart';
 
 class CloneDetailScreen extends StatelessWidget {
   const CloneDetailScreen({super.key, required this.uid});
@@ -175,6 +176,14 @@ class CloneDetailScreen extends StatelessWidget {
                         ? '这里只统计个人空间中的原应用，不包含分身'
                         : '工作资料与个人空间由系统隔离，无法从这里读取该分身的用量',
                   ),
+              ]),
+              SectionCard(title: '密码本', children: [
+                GlassTile(
+                  icon: Icons.key_rounded,
+                  title: '管理此分身账号',
+                  subtitle: '添加或编辑该分身的登录账号，工具箱可一键填入',
+                  onTap: () => openVaultScreen(context, initialPackage: c.packageName, openEditor: true),
+                ),
               ]),
               SectionCard(title: '管理', children: [
                 GlassTile(

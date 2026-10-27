@@ -1,4 +1,4 @@
-/// 密码本条目。与原生 VaultStore 共用本机明文存储。
+/// 密码本条目。与原生 VaultStore 共用本机明文存储（filesDir/vault_plain.json）。
 class VaultEntry {
   const VaultEntry({
     required this.id,
@@ -78,3 +78,33 @@ List<VaultGroup> groupVaultEntries(
 
 bool _isCurrent(List<VaultEntry> entries, String? pkg) =>
     pkg != null && pkg.isNotEmpty && entries.any((e) => e.packageName == pkg);
+
+/// 按关键字过滤（备注名 / 账号 / 包名 / 备注 / 分身 uid）。
+List<VaultEntry> filterVaultEntries(List<VaultEntry> entries, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return entries;
+  return [
+    for (final e in entries)
+      if (e.label.toLowerCase().contains(q) ||
+          e.username.toLowerCase().contains(q) ||
+          e.packageName.toLowerCase().contains(q) ||
+          e.note.toLowerCase().contains(q) ||
+          e.cloneUid.toLowerCase().contains(q))
+        e,
+  ];
+}
+
+/// 合并多源条目：同 id 时后者覆盖前者。对应原生 VaultStore.mergeById。
+/// 用于验证「prefs + 文件」合并不会丢 1.3.11 独立进程写过的账号。
+List<Map<String, String>> mergeVaultSources(List<List<Map<String, String>>> sources) {
+  final byId = <String, Map<String, String>>{};
+  for (final src in sources) {
+    for (final e in src) {
+      final id = e['id'];
+      final pkg = e['pkg'];
+      if (id == null || id.isEmpty || pkg == null || pkg.isEmpty) continue;
+      byId[id] = Map<String, String>.from(e);
+    }
+  }
+  return byId.values.toList();
+}

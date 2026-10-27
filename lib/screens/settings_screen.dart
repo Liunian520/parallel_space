@@ -16,6 +16,7 @@ import '../widgets/section_tile.dart';
 import 'compat_screen.dart';
 import 'private_space_screen.dart';
 import 'toolbox_screen.dart';
+import 'vault_screen.dart';
 import 'usage_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -49,11 +50,17 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => _push(context, const PrivateSpaceScreen()),
             ),
           ]),
-          SectionCard(title: '工具箱', children: [
+          SectionCard(title: '工具箱与密码本', children: [
+            GlassTile(
+              icon: Icons.key_rounded,
+              title: '密码本',
+              subtitle: '在这里添加、编辑和管理账号；工具箱只负责填入和复制',
+              onTap: () => openVaultScreen(context),
+            ),
             GlassTile(
               icon: Icons.widgets_rounded,
               title: '工具箱',
-              subtitle: '分身运行时的悬浮小窗，第一项是账号密码本',
+              subtitle: '分身运行时的悬浮小窗，可查看密码本并一键填入',
               trailing: Switch(
                 value: st.toolboxOverlay,
                 onChanged: (v) => applyToolboxEnabled(context, v),

@@ -164,18 +164,7 @@
             android:noHistory="true"
             android:theme="@style/Theme.VaultAuth" />
 
-        <!-- 账号编辑：独立进程，避免悬浮窗内 EditText / IME 拖垮工具箱服务 -->
-        <activity
-            android:name=".ToolboxEditActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop"
-            android:process=":toolbox_edit"
-            android:taskAffinity=""
-            android:theme="@style/Theme.ToolboxEdit"
-            android:windowSoftInputMode="adjustResize" />
-
-        <service
+<service
             android:name=".MockLocationService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

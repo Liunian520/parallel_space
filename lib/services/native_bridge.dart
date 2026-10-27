@@ -126,6 +126,7 @@ class NativeBridge {
     VoidCallback? onMockChanged,
     void Function(String sid)? onPinned,
     void Function(bool overlay, bool accessibility)? onPermChanged,
+    void Function(String pkg)? onOpenVault,
   }) {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'openClone' && call.arguments is String) onOpenClone(call.arguments as String);
@@ -135,10 +136,18 @@ class NativeBridge {
         final m = call.arguments as Map;
         onPermChanged?.call(m['overlay'] == true, m['accessibility'] == true);
       }
+      if (call.method == 'openVault') {
+        final m = call.arguments;
+        final pkg = m is Map && m['pkg'] is String ? m['pkg'] as String : '';
+        onOpenVault?.call(pkg);
+      }
     });
   }
 
   static Future<String?> launchCloneId() => _call<String>('getLaunchCloneId');
+
+  /// 冷启动时是否要打开密码本（工具箱「去密码本添加」）。
+  static Future<Map?> launchVault() => _call<Map>('getLaunchVault');
 
   // ---------------- 桌面快捷方式 ----------------
   static Future<PinResponse> pinShortcut({

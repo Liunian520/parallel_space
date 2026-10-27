@@ -165,7 +165,7 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
               ]),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 8, 4, 0),
-                child: Text('分身应用在前台时，屏幕上会出现一个可拖动、可收起的小窗。毛玻璃风格，点窗外不挡操作。第一项是账号密码本。'),
+                child: Text('分身应用在前台时，屏幕上会出现一个可拖动、可收起的小窗。毛玻璃风格，点窗外不挡操作。可打开密码本进行一键填入和复制；添加账号请到 App 密码本页。'),
               ),
               SectionCard(title: '悬浮小窗', children: [
                 GlassTile(
@@ -203,12 +203,12 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                   },
                 ),
               ]),
-              SectionCard(title: '账号密码本', children: [
+              SectionCard(title: '密码本', children: [
                 GlassTile(
                   icon: Icons.key_rounded,
-                  title: '管理账号密码',
-                  subtitle: '按分身或包名分组；一键填入，或分别复制账号 / 密码',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VaultScreen())),
+                  title: '打开密码本',
+                  subtitle: '在 App 里添加和管理账号；工具箱只负责填入和复制',
+                  onTap: () => openVaultScreen(context),
                 ),
               ]),
               SectionCard(title: '权限状态', children: [
@@ -280,7 +280,7 @@ class _ToolboxCrashLogScreenState extends State<ToolboxCrashLogScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清空日志？'),
-        content: const Text('只清除本机上的工具箱诊断日志，不影响账号密码本。'),
+        content: const Text('只清除本机上的工具箱诊断日志，不影响密码本。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('清空')),
