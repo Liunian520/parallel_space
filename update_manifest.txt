@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.13",
-  "versionCode": 14313,
-  "apkUrl": "https://link.liunianai.cn/f/disk/0oknbdfb7xd6kzchzvlptwtetu/parallel_space_v1.3.13_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/4j3yrv",
-  "sha256": "c64cc9abc98e920e9d6123cbff6ca5ce7875bb212ba66accfeb6a61c43b204f0",
+  "versionName": "1.3.14",
+  "versionCode": 14314,
+  "apkUrl": "https://link.liunianai.cn/f/disk/wgm5vb0nicf70vt8thkdtquo6x/parallel_space_v1.3.14_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/9tfrt5",
+  "sha256": "48cccd1e770da25eeb326eaeea558511443b6bc3a709f3af1d78c607598738ff",
   "size": 21264367,
-  "notes": "1.3.13：检查更新多源+防缓存；修复 split-per-abi 的 versionCode 误判「已是最新」；工具箱复制/填入按钮行内布局并保证反馈。",
-  "publishedAt": "2026-10-28T00:59:26+08:00"
+  "notes": "1.3.14：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "publishedAt": "2026-10-28T01:43:32+08:00"
 }
