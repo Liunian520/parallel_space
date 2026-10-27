@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.14",
-  "versionCode": 14314,
-  "apkUrl": "https://link.liunianai.cn/f/disk/wgm5vb0nicf70vt8thkdtquo6x/parallel_space_v1.3.14_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/9tfrt5",
-  "sha256": "48cccd1e770da25eeb326eaeea558511443b6bc3a709f3af1d78c607598738ff",
-  "size": 21264367,
-  "notes": "1.3.14：修复工具箱按钮点了没反应——展开面板夹到屏内，outside_tap 校验坐标；密码本变更改为进程内通知，避开 BlackBox 广播 NPE；复制/填入补日志与剪贴板回退。",
-  "publishedAt": "2026-10-28T01:43:32+08:00"
+  "versionName": "1.3.15",
+  "versionCode": 14315,
+  "apkUrl": "https://link.liunianai.cn/f/disk/yistvvnrs8yrxjguwf3kmuyh8x/parallel_space_v1.3.15_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/zbz874",
+  "sha256": "9071911e2daf3dc2ed44aee9f1c100cd5f3711c8dbe9978d40cfaea6d091e6da",
+  "size": 21264451,
+  "notes": "1.3.15：修复工具箱面板重建死循环（整块点不动）；展开改为全屏窗+遮罩；诊断日志可复制最近 50 行并限制大小。",
+  "publishedAt": "2026-10-28T02:01:36+08:00"
 }
