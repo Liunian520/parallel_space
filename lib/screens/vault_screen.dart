@@ -7,6 +7,7 @@ import '../services/vault_group.dart';
 import '../state/clone_store.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
+import 'toolbox_screen.dart';
 
 /// 主应用里的密码本。和悬浮窗共用同一份本机明文存储，打开即可用，不验证身份。
 class VaultScreen extends StatefulWidget {
@@ -32,6 +33,7 @@ class _VaultScreenState extends State<VaultScreen> {
     _currentPkg = await NativeBridge.toolboxCurrentPackage() ?? '';
     if (!mounted) return;
     await _reload();
+    if (mounted) maybeShowA11yGuide(context);
   }
 
   Future<void> _reload() async {
@@ -83,9 +85,20 @@ class _VaultScreenState extends State<VaultScreen> {
     if (!mounted) return;
     showGlassSnack(context, switch (r) {
       'filled' => '已填入当前输入框',
-      'copied' => '未开启无障碍，已复制到剪贴板',
-      'copied_no_field' => '没有找到输入框，已复制到剪贴板',
+      'copied' => '未开启无障碍，已复制密码，长按输入框粘贴',
+      'copied_no_field' => '没有找到输入框，已复制密码，长按输入框粘贴',
       _ => '填入失败',
+    });
+  }
+
+  Future<void> _copy(VaultEntry e, String which) async {
+    final r = await NativeBridge.vaultCopy(e.id, which);
+    if (!mounted) return;
+    showGlassSnack(context, switch (r) {
+      'copied_user' => '已复制账号',
+      'copied_pass' => '已复制密码，长按输入框粘贴',
+      'empty' => which == 'user' ? '没有账号可复制' : '没有密码可复制',
+      _ => '复制失败',
     });
   }
 
@@ -111,7 +124,7 @@ class _VaultScreenState extends State<VaultScreen> {
               ]),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 8, 4, 12),
-                child: Text('账号和密码保存在本机，方便一键填入。未开无障碍时会复制到剪贴板。'),
+                child: Text('账号和密码保存在本机。可一键填入；也可分别复制账号或密码。未开无障碍时会自动复制并提示粘贴。'),
               ),
               if (_loading)
                 const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
@@ -141,16 +154,35 @@ class _VaultScreenState extends State<VaultScreen> {
                             ListTile(
                               title: Text(e.label),
                               subtitle: Text(e.username.isEmpty ? e.packageName : e.username),
-                              trailing: PopupMenuButton<String>(
-                                onSelected: (v) {
-                                  if (v == 'fill') _fill(e);
-                                  if (v == 'edit') _edit(existing: e);
-                                  if (v == 'delete') _delete(e);
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(value: 'fill', child: Text('填入')),
-                                  PopupMenuItem(value: 'edit', child: Text('编辑')),
-                                  PopupMenuItem(value: 'delete', child: Text('删除')),
+                              onLongPress: () => _copy(e, 'pass'),
+                              trailing: Wrap(
+                                spacing: 0,
+                                children: [
+                                  IconButton(
+                                    tooltip: '一键填入',
+                                    onPressed: () => _fill(e),
+                                    icon: const Icon(Icons.input_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: '复制账号',
+                                    onPressed: () => _copy(e, 'user'),
+                                    icon: const Icon(Icons.person_outline_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: '复制密码',
+                                    onPressed: () => _copy(e, 'pass'),
+                                    icon: const Icon(Icons.key_rounded),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (v) {
+                                      if (v == 'edit') _edit(existing: e);
+                                      if (v == 'delete') _delete(e);
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'edit', child: Text('编辑')),
+                                      PopupMenuItem(value: 'delete', child: Text('删除')),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -225,20 +257,21 @@ class _VaultEditorState extends State<_VaultEditor> {
       title: Text(widget.existing == null ? '添加账号' : '编辑账号'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: _label, decoration: const InputDecoration(labelText: '名称'), textInputAction: TextInputAction.next),
-          TextField(controller: _user, decoration: const InputDecoration(labelText: '用户名'), textInputAction: TextInputAction.next),
+          TextField(controller: _label, decoration: const InputDecoration(labelText: '名称', prefixIcon: Icon(Icons.badge_outlined)), textInputAction: TextInputAction.next),
+          TextField(controller: _user, decoration: const InputDecoration(labelText: '用户名 / 手机 / 学号', prefixIcon: Icon(Icons.person_outline_rounded)), textInputAction: TextInputAction.next),
           TextField(
             controller: _pass,
             obscureText: _obscure,
             decoration: InputDecoration(
               labelText: '密码',
+              prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(_obscure ? Icons.visibility_rounded : Icons.visibility_off_rounded),
               ),
             ),
           ),
-          TextField(controller: _pkg, decoration: const InputDecoration(labelText: '包名'), textInputAction: TextInputAction.done),
+          TextField(controller: _pkg, decoration: const InputDecoration(labelText: '包名', prefixIcon: Icon(Icons.apps_rounded)), textInputAction: TextInputAction.done),
         ]),
       ),
       actions: [

@@ -125,11 +125,16 @@ class NativeBridge {
     required void Function(String cloneId) onOpenClone,
     VoidCallback? onMockChanged,
     void Function(String sid)? onPinned,
+    void Function(bool overlay, bool accessibility)? onPermChanged,
   }) {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'openClone' && call.arguments is String) onOpenClone(call.arguments as String);
       if (call.method == 'mockChanged') onMockChanged?.call();
       if (call.method == 'pinResult' && call.arguments is String) onPinned?.call(call.arguments as String);
+      if (call.method == 'permPossiblyChanged' && call.arguments is Map) {
+        final m = call.arguments as Map;
+        onPermChanged?.call(m['overlay'] == true, m['accessibility'] == true);
+      }
     });
   }
 
@@ -340,8 +345,18 @@ class NativeBridge {
 
   static Future<Map?> compatReport() => _call<Map>('compatReport');
 
-  /// 'rom' | 'details' | 'ok' | 'requested' | 'error' | 'none'
+  /// 'rom' | 'details' | 'settings' | 'ok' | 'requested' | 'error' | 'error|<手动路径>' | 'none'
   static Future<String> compatOpen(String id) async => await _call<String>('compatOpen', {'id': id}) ?? 'error';
+
+  static String compatOpenHint(String raw) {
+    if (raw.startsWith('error|')) return raw.substring(6);
+    return '';
+  }
+
+  static String compatOpenCode(String raw) {
+    if (raw.startsWith('error|')) return 'error';
+    return raw;
+  }
 
   static Future<String> openUrl(String url) async => await _call<String>('openUrl', {'url': url}) ?? 'error';
 
@@ -359,4 +374,14 @@ class NativeBridge {
 
   /// 'filled' | 'copied' | 'copied_no_field' | 'locked' | 'need_auth' | 'error'
   static Future<String> vaultFill(String id) async => await _call<String>('vaultFill', {'id': id}) ?? 'error';
+
+  /// which: `user` | `pass`
+  static Future<String> vaultCopy(String id, String which) async =>
+      await _call<String>('vaultCopy', {'id': id, 'which': which}) ?? 'error';
+
+  static Future<Map?> compatChains() => _call<Map>('compatChains');
+
+  static Future<bool> a11yGuideSeen() async => await _call<bool>('a11yGuideSeen') ?? false;
+
+  static Future<void> a11yGuideMark() => _call('a11yGuideMark');
 }

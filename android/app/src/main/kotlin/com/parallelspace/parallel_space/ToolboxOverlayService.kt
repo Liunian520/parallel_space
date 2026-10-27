@@ -216,13 +216,15 @@ class ToolboxOverlayService : Service() {
         val window = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         wm = window
         val pal = Palette(this)
-        val bubbleSize = dp(56)
+        val bubbleSize = dp(48)
         val bubbleView = FrameLayout(this).apply {
-            background = circle(pal.accent)
+            background = bubbleDrawable(pal, idle = false)
+            elevation = dp(6).toFloat()
             contentDescription = "工具箱"
+            alpha = 1f
             val icon = ImageView(this@ToolboxOverlayService).apply {
                 setImageResource(R.drawable.ic_toolbox)
-                val pad = dp(16)
+                val pad = dp(12)
                 setPadding(pad, pad, pad, pad)
             }
             addView(icon, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -231,15 +233,19 @@ class ToolboxOverlayService : Service() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = panelBg(pal)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            elevation = dp(10).toFloat()
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             visibility = View.GONE
+            alpha = 0f
+            scaleX = 0.92f
+            scaleY = 0.92f
         }
         card = panel
         val holder = FrameLayout(this)
         holder.addView(bubbleView, FrameLayout.LayoutParams(bubbleSize, bubbleSize))
         holder.addView(
             panel,
-            FrameLayout.LayoutParams(dp(300), FrameLayout.LayoutParams.WRAP_CONTENT),
+            FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT),
         )
         root = holder
         val prefs = getSharedPreferences("toolbox", Context.MODE_PRIVATE)
@@ -274,6 +280,7 @@ class ToolboxOverlayService : Service() {
         try {
             window.addView(holder, params)
             applyVisibility()
+            scheduleIdleDim()
         } catch (t: Throwable) {
             Log.w(TAG, "addView failed", t)
             root = null
@@ -303,9 +310,24 @@ class ToolboxOverlayService : Service() {
 
     private fun expand() {
         expanded = true
-        // 展开只读面板：不抢焦点，触摸穿透
+        cancelIdleDim()
+        bubble?.animate()?.cancel()
+        bubble?.alpha = 1f
         focusable(false)
         applyVisibility()
+        val panel = card
+        if (panel != null) {
+            panel.animate().cancel()
+            panel.alpha = 0f
+            panel.scaleX = 0.92f
+            panel.scaleY = 0.92f
+            panel.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(180)
+                .start()
+        }
         refreshVaultAsync()
     }
 
@@ -315,7 +337,20 @@ class ToolboxOverlayService : Service() {
         mode = Mode.TOOLS
         editingId = null
         focusable(false)
-        applyVisibility()
+        val panel = card
+        if (panel != null && panel.visibility == View.VISIBLE) {
+            panel.animate().cancel()
+            panel.animate()
+                .alpha(0f)
+                .scaleX(0.92f)
+                .scaleY(0.92f)
+                .setDuration(140)
+                .withEndAction { applyVisibility(); scheduleIdleDim() }
+                .start()
+        } else {
+            applyVisibility()
+            scheduleIdleDim()
+        }
     }
 
     private fun applyVisibility() {
@@ -328,11 +363,61 @@ class ToolboxOverlayService : Service() {
             if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
         } catch (t: Throwable) {
             Log.w(TAG, "updateViewLayout in applyVisibility failed", t)
-            // 视图可能已被系统摘掉：清空引用，让看门狗重建
             root = null
             card = null
             bubble = null
         }
+    }
+
+    private var idleDimRunnable: Runnable? = null
+
+    private fun scheduleIdleDim() {
+        cancelIdleDim()
+        if (expanded) return
+        val r = Runnable {
+            val b = bubble ?: return@Runnable
+            if (expanded) return@Runnable
+            b.animate().alpha(0.55f).setDuration(280).start()
+            // 半隐到屏幕边缘
+            snapToEdge(halfHide = true)
+        }
+        idleDimRunnable = r
+        handler.postDelayed(r, 2_500L)
+    }
+
+    private fun cancelIdleDim() {
+        idleDimRunnable?.let { handler.removeCallbacks(it) }
+        idleDimRunnable = null
+        bubble?.animate()?.cancel()
+        bubble?.alpha = 1f
+    }
+
+    private fun snapToEdge(halfHide: Boolean = false) {
+        val params = lp ?: return
+        val view = root ?: return
+        val b = bubble ?: return
+        val size = b.width.takeIf { it > 0 } ?: dp(48)
+        val sw = screenWidth()
+        val mid = params.x + size / 2
+        val left = mid < sw / 2
+        val target = if (left) {
+            if (halfHide) -size / 2 else dp(8)
+        } else {
+            if (halfHide) sw - size / 2 else (sw - size - dp(8)).coerceAtLeast(0)
+        }
+        val start = params.x
+        val anim = android.animation.ValueAnimator.ofInt(start, target)
+        anim.duration = 220
+        anim.interpolator = android.view.animation.OvershootInterpolator(0.8f)
+        anim.addUpdateListener {
+            params.x = it.animatedValue as Int
+            try {
+                if (view.isAttachedToWindow) wm?.updateViewLayout(view, params)
+            } catch (_: Throwable) {
+            }
+        }
+        anim.start()
+        getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", target).putInt("y", params.y).apply()
     }
 
     private fun focusable(on: Boolean) {
@@ -409,9 +494,61 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+
+    private fun toolboxHeader(): LinearLayout {
+        val pal = Palette(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(8))
+            val appIcon = ImageView(this@ToolboxOverlayService).apply {
+                setImageResource(R.drawable.ic_toolbox)
+                val s = dp(28)
+                layoutParams = LinearLayout.LayoutParams(s, s).apply { marginEnd = dp(8) }
+            }
+            addView(appIcon)
+            val col = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(this@ToolboxOverlayService).apply {
+                    text = "工具箱"
+                    setTextColor(pal.text)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    typeface = Typeface.DEFAULT_BOLD
+                })
+                val cloneName = resolvedLabel.ifBlank { if (pkg.isBlank()) "等待打开分身" else pkg }
+                addView(TextView(this@ToolboxOverlayService).apply {
+                    text = cloneName
+                    setTextColor(pal.sub)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    maxLines = 1
+                })
+            }
+            addView(col)
+            if (resolvedIcon != null || pkg.isNotBlank()) {
+                val cloneIcon = ImageView(this@ToolboxOverlayService).apply {
+                    val s = dp(28)
+                    layoutParams = LinearLayout.LayoutParams(s, s).apply { marginEnd = dp(8) }
+                    val d = resolvedIcon ?: loadIcon(pkg)
+                    if (d != null) setImageDrawable(d) else setImageResource(R.drawable.ic_toolbox)
+                }
+                addView(cloneIcon)
+            }
+            addView(TextView(this@ToolboxOverlayService).apply {
+                text = "收起"
+                setTextColor(pal.accent)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(dp(8), dp(10), dp(4), dp(10))
+                minimumHeight = dp(44)
+                setOnClickListener { collapse() }
+            })
+        }
+    }
+
     private fun buildTools(panel: LinearLayout) {
         focusable(false)
-        panel.addView(header("工具箱", "收起") { collapse() })
+        panel.addView(toolboxHeader())
+
         val shown = resolvedLabel.ifBlank { pkg }.ifBlank { "分身" }
         val hint = TextView(this).apply {
             text = if (pkg.isBlank()) "分身运行中" else "当前分身 · $shown"
@@ -428,6 +565,36 @@ class ToolboxOverlayService : Service() {
                 } else {
                     toast("这个工具还没接上")
                 }
+            })
+        }
+    }
+
+    private fun emptyVault(): LinearLayout {
+        val pal = Palette(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(8), dp(16), dp(8), dp(8))
+            val icon = ImageView(this@ToolboxOverlayService).apply {
+                setImageResource(R.drawable.ic_toolbox)
+                val s = dp(48)
+                layoutParams = LinearLayout.LayoutParams(s, s).apply { bottomMargin = dp(8) }
+                imageAlpha = 160
+            }
+            addView(icon)
+            addView(TextView(this@ToolboxOverlayService).apply {
+                text = "还没有账号"
+                setTextColor(pal.text)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            })
+            addView(TextView(this@ToolboxOverlayService).apply {
+                text = "添加后可一键填入，或分别复制账号和密码"
+                setTextColor(pal.sub)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(8))
             })
         }
     }
@@ -451,7 +618,9 @@ class ToolboxOverlayService : Service() {
             val hit = groups[key].orEmpty().any { it.pkg == pkg || it.cloneUid == "w:$pkg" }
             if (hit) 0 else 1
         }.thenBy { it })
-        if (keys.isEmpty()) col.addView(body("还没有账号。添加后可以一键填入或复制。"))
+        if (keys.isEmpty()) {
+            col.addView(emptyVault())
+        }
         for (key in keys) {
             val list = groups[key].orEmpty().sortedBy { it.label }
             val current = list.any { it.pkg == pkg }
@@ -469,13 +638,19 @@ class ToolboxOverlayService : Service() {
 
     private fun entryRow(e: VaultStore.Entry): LinearLayout {
         val pal = Palette(this)
+        var showPass = false
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(6), 0, dp(6))
+            background = rowBg(pal)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumHeight = dp(44)
+            val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            gap.topMargin = dp(8)
+            layoutParams = gap
             val title = TextView(this@ToolboxOverlayService).apply {
-                text = e.label
+                text = e.label.ifBlank { "未命名" }
                 setTextColor(pal.text)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 typeface = Typeface.DEFAULT_BOLD
             }
             val sub = TextView(this@ToolboxOverlayService).apply {
@@ -483,17 +658,98 @@ class ToolboxOverlayService : Service() {
                 setTextColor(pal.sub)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             }
+            val passRow = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val passTv = TextView(this@ToolboxOverlayService).apply {
+                text = if (e.password.isEmpty()) "未填写密码" else "•".repeat(e.password.length.coerceIn(6, 12))
+                setTextColor(pal.sub)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val eye = TextView(this@ToolboxOverlayService).apply {
+                text = "显示"
+                setTextColor(pal.accent)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                minimumHeight = dp(44)
+                setOnClickListener {
+                    showPass = !showPass
+                    text = if (showPass) "隐藏" else "显示"
+                    passTv.text = when {
+                        e.password.isEmpty() -> "未填写密码"
+                        showPass -> e.password
+                        else -> "•".repeat(e.password.length.coerceIn(6, 12))
+                    }
+                }
+            }
+            passRow.addView(passTv)
+            passRow.addView(eye)
             addView(title)
             addView(sub)
-            val row = LinearLayout(this@ToolboxOverlayService)
-            row.addView(link("填入") { performFill(e) })
-            row.addView(link("编辑") {
+            addView(passRow)
+            val actions = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, 0)
+            }
+            actions.addView(primaryChip("一键填入") { performFill(e) })
+            actions.addView(outlineChip("复制账号") { copyUser(e) })
+            actions.addView(outlineChip("复制密码") { copyPass(e) })
+            addView(actions)
+            val more = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            more.addView(link("编辑") {
                 editingId = e.id
                 mode = Mode.EDIT
                 rebuild()
             })
-            row.addView(link("删除") { confirmDelete(e) })
-            addView(row)
+            more.addView(link("删除") { confirmDelete(e) })
+            addView(more)
+            setOnLongClickListener {
+                copyPass(e)
+                true
+            }
+        }
+    }
+
+    private fun primaryChip(text: String, onClick: () -> Unit): TextView {
+        val pal = Palette(this)
+        return TextView(this).apply {
+            this.text = text
+            setTextColor(0xFFFFFFFF.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            background = round(pal.accent, dp(16).toFloat())
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumHeight = dp(44)
+            setOnClickListener { onClick() }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.marginEnd = dp(8)
+            layoutParams = lp
+        }
+    }
+
+    private fun outlineChip(text: String, onClick: () -> Unit): TextView {
+        val pal = Palette(this)
+        return TextView(this).apply {
+            this.text = text
+            setTextColor(pal.accent)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(if (pal.night) 0x22FFFFFF.toInt() else 0x142F7CF6.toInt())
+                setStroke(dp(1).coerceAtLeast(1), (pal.accent and 0x00FFFFFF.toInt()) or 0x66000000.toInt())
+            }
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            minimumHeight = dp(44)
+            setOnClickListener { onClick() }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.marginEnd = dp(6)
+            layoutParams = lp
         }
     }
 
@@ -525,8 +781,9 @@ class ToolboxOverlayService : Service() {
             focusable(false)
             rebuild()
         })
+        panel.addView(body("名称、用户名和密码会保存在本机，方便一键填入。"))
         labelInput = field("名称，例如主号", existing?.label ?: "")
-        userInput = field("用户名", existing?.username ?: "")
+        userInput = field("用户名 / 手机 / 学号", existing?.username ?: "")
         passInput = field("密码", existing?.password ?: "", password = true)
         panel.addView(labelInput)
         panel.addView(userInput)
@@ -548,7 +805,7 @@ class ToolboxOverlayService : Service() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = round(if (pal.night) 0x22FFFFFF else 0x11000000, dp(12).toFloat())
+            background = round(if (pal.night) 0x22FFFFFF.toInt() else 0x11000000.toInt(), dp(12).toFloat())
             setPadding(dp(10), dp(8), dp(10), dp(8))
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             gap.topMargin = dp(6)
@@ -613,8 +870,9 @@ class ToolboxOverlayService : Service() {
     }
 
     private fun performFill(e: VaultStore.Entry) {
-        // 先放弃焦点，避免无障碍把字填进悬浮窗自己的输入框。
+        // 收起面板并把焦点交还给分身窗口，再填入。
         focusable(false)
+        if (expanded) collapse()
         handler.postDelayed({
             bg.execute {
                 val r = try {
@@ -624,13 +882,25 @@ class ToolboxOverlayService : Service() {
                 }
                 handler.post { toast(fillMessage(r)) }
             }
-        }, 200)
+        }, 320)
+    }
+
+    private fun copyUser(e: VaultStore.Entry) {
+        val ok = ToolboxController.copyText(this, e.username)
+        toast(if (ok) "已复制账号" else if (e.username.isEmpty()) "没有账号可复制" else "复制失败")
+    }
+
+    private fun copyPass(e: VaultStore.Entry) {
+        val ok = ToolboxController.copyText(this, e.password)
+        toast(if (ok) "已复制密码，长按输入框粘贴" else if (e.password.isEmpty()) "没有密码可复制" else "复制失败")
     }
 
     private fun fillMessage(r: String) = when (r) {
         "filled" -> "已填入当前输入框"
-        "copied" -> "未开启无障碍，已复制到剪贴板"
-        "copied_no_field" -> "没有找到输入框，已复制到剪贴板"
+        "copied" -> "未开启无障碍，已复制密码，长按输入框粘贴"
+        "copied_no_field" -> "没有找到输入框，已复制密码，长按输入框粘贴"
+        "copied_user" -> "已复制账号"
+        "copied_pass" -> "已复制密码，长按输入框粘贴"
         else -> "填入失败"
     }
 
@@ -782,19 +1052,23 @@ class ToolboxOverlayService : Service() {
             setTextColor(pal.text)
             setHintTextColor(pal.sub)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            background = round(if (pal.night) 0x22FFFFFF else 0x11000000, dp(12).toFloat())
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(if (pal.night) 0x14FFFFFF.toInt() else 0x08000000.toInt())
+                setStroke(dp(1).coerceAtLeast(1), if (pal.night) 0x44FFFFFF.toInt() else 0x332F7CF6.toInt())
+            }
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            minimumHeight = dp(44)
             inputType = if (password) {
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             } else {
                 InputType.TYPE_CLASS_TEXT
             }
-            // 点输入框时确保窗口可聚焦（防止从只读切过来漏掉）
             setOnFocusChangeListener { _, has ->
                 if (has) focusable(true)
             }
             val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            gap.topMargin = dp(6)
+            gap.topMargin = dp(8)
             layoutParams = gap
         }
     }
@@ -812,6 +1086,7 @@ class ToolboxOverlayService : Service() {
                 val params = lp ?: return false
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        cancelIdleDim()
                         downX = e.rawX
                         downY = e.rawY
                         startX = params.x
@@ -835,7 +1110,11 @@ class ToolboxOverlayService : Service() {
                     }
                     MotionEvent.ACTION_UP -> {
                         if (!dragging) onClick()
-                        else getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", params.x).putInt("y", params.y).apply()
+                        else {
+                            getSharedPreferences("toolbox", MODE_PRIVATE).edit().putInt("x", params.x).putInt("y", params.y).apply()
+                            snapToEdge(halfHide = false)
+                            scheduleIdleDim()
+                        }
                         return true
                     }
                 }
@@ -906,20 +1185,29 @@ class ToolboxOverlayService : Service() {
         setColor(color)
     }
 
+    private fun bubbleDrawable(pal: Palette, idle: Boolean): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        // 半透明强调色，带浅描边，呈现毛玻璃感（不做 FLAG_BLUR_BEHIND）
+        val base = pal.accent
+        val alpha = if (idle) 0x88 else 0xCC
+        setColor((base and 0x00FFFFFF.toInt()) or (alpha shl 24))
+        setStroke(dp(1).coerceAtLeast(1), if (pal.night) 0x55FFFFFF.toInt() else 0x88FFFFFF.toInt())
+    }
+
     private fun round(color: Int, r: Float) = GradientDrawable().apply {
         cornerRadius = r
         setColor(color)
     }
 
     private fun panelBg(pal: Palette) = GradientDrawable().apply {
-        cornerRadius = dp(28).toFloat()
+        cornerRadius = dp(20).toFloat()
         setColor(pal.bg)
         setStroke(dp(1).coerceAtLeast(1), pal.stroke)
     }
 
     private fun rowBg(pal: Palette) = GradientDrawable().apply {
-        cornerRadius = dp(18).toFloat()
-        setColor(if (pal.night) 0x18FFFFFF else 0x14000000)
+        cornerRadius = dp(16).toFloat()
+        setColor(if (pal.night) 0x18FFFFFF.toInt() else 0x10000000.toInt())
     }
 
     private enum class Mode { TOOLS, VAULT, EDIT }
@@ -927,14 +1215,19 @@ class ToolboxOverlayService : Service() {
     private class Palette(ctx: Context) {
         val night = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val accent = if (Build.VERSION.SDK_INT >= 31) {
-            ctx.getColor(if (night) android.R.color.system_accent1_200 else android.R.color.system_accent1_600)
+            try {
+                ctx.getColor(if (night) android.R.color.system_accent1_200 else android.R.color.system_accent1_600)
+            } catch (_: Throwable) {
+                0xFF2F7CF6.toInt()
+            }
         } else {
             0xFF2F7CF6.toInt()
         }
-        val bg = if (night) 0xF01B1F2A.toInt() else 0xF7FFFFFF.toInt()
+        // 半透明着色背景，不做系统 blurBehind
+        val bg = if (night) 0xE61B1F2A.toInt() else 0xF2FFFFFF.toInt()
         val text = if (night) 0xFFF4F6FB.toInt() else 0xFF1B1F2A.toInt()
         val sub = if (night) 0xFFB7BECC.toInt() else 0xFF5C6575.toInt()
-        val stroke = if (night) 0x33FFFFFF else 0x66FFFFFF
+        val stroke = if (night) 0x40FFFFFF.toInt() else 0x55FFFFFF.toInt()
     }
 
     companion object {

@@ -222,6 +222,31 @@ class MainActivity : FlutterFragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getStringExtra(EXTRA_CLONE_ID)?.let { channel?.invokeMethod("openClone", it) }
+        handleOpenCompat(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从系统权限页返回时，通知 Flutter 刷新悬浮窗 / 无障碍状态
+        channel?.invokeMethod(
+            "permPossiblyChanged",
+            mapOf(
+                "overlay" to OemAdapter.canDrawOverlay(this),
+                "accessibility" to OemAdapter.accessibilityOn(this),
+            ),
+        )
+        handleOpenCompat(intent)
+    }
+
+    private fun handleOpenCompat(intent: Intent?) {
+        val id = intent?.getStringExtra("open_compat") ?: return
+        intent.removeExtra("open_compat")
+        window.decorView.post {
+            try {
+                OemAdapter.openCheck(this, id)
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     // ---------------- 后台执行（图标渲染 / 应用列表不阻塞 UI 线程） ----------------

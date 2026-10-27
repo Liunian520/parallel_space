@@ -253,5 +253,9 @@
         <package android:name="com.iqoo.secure"/>
         <package android:name="com.samsung.android.lool"/>
         <package android:name="com.samsung.android.sm"/>
+        <package android:name="com.meizu.safe"/>
+        <intent>
+            <action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION"/>
+        </intent>
     </queries>
 </manifest>

@@ -125,19 +125,26 @@ object ToolboxController {
         notifyA11y(ctx)
     }
 
+    /** 复制到剪贴板，不自动清除。 */
+    fun copyText(ctx: Context, text: String): Boolean {
+        if (text.isEmpty()) return false
+        return try {
+            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     /**
      * 无障碍不可用时的退路：把密码（没有则用户名）放进剪贴板，不自动清除。
      */
     fun copySecret(ctx: Context, password: String, username: String) {
-        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = password.ifEmpty { username }
-        try {
-            cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
-        } catch (_: Throwable) {
-        }
+        copyText(ctx, password.ifEmpty { username })
     }
 
-    /** "filled" | "copied" | "copied_no_field" */
+    /** "filled" | "copied" | "copied_no_field" | "copied_user" | "copied_pass" */
     fun fill(ctx: Context, username: String, password: String): String {
         val svc = ToolboxAccessibilityService.instance
         if (svc != null) {
@@ -147,10 +154,13 @@ object ToolboxController {
                 false
             }
             if (ok) return "filled"
-            copySecret(ctx, password, username)
+            // 填入失败：优先复制密码，方便长按粘贴
+            if (password.isNotEmpty() && copyText(ctx, password)) return "copied_no_field"
+            if (username.isNotEmpty() && copyText(ctx, username)) return "copied_no_field"
             return "copied_no_field"
         }
-        copySecret(ctx, password, username)
+        if (password.isNotEmpty() && copyText(ctx, password)) return "copied"
+        if (username.isNotEmpty() && copyText(ctx, username)) return "copied"
         return "copied"
     }
 
@@ -175,6 +185,26 @@ object ToolboxController {
             "vaultUpsert" -> result.success(mutate(activity) { VaultStore.upsert(activity, call.arguments as? Map<*, *> ?: emptyMap<String, Any>()) })
             "vaultDelete" -> result.success(mutate(activity) { VaultStore.delete(activity, call.argument<String>("id") ?: "") })
             "vaultFill" -> result.success(fillEntry(activity, call.argument<String>("id") ?: ""))
+            "vaultCopy" -> result.success(copyEntry(activity, call.argument<String>("id") ?: "", call.argument<String>("which") ?: "pass"))
+            "compatChains" -> result.success(
+                OemAdapter.allFamilies().associate { fam ->
+                    fam.name to mapOf(
+                        "overlay" to OemAdapter.overlayChainLabels(fam),
+                        "accessibility" to OemAdapter.accessibilityChainLabels(fam),
+                        "autostart" to OemAdapter.autoStartChainLabels(fam),
+                        "shortcut" to OemAdapter.shortcutChainLabels(fam),
+                        "notification" to OemAdapter.chainLabels("notification", fam),
+                        "battery" to OemAdapter.chainLabels("battery", fam),
+                    )
+                }
+            )
+            "a11yGuideSeen" -> result.success(
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("a11y_guide_seen", false)
+            )
+            "a11yGuideMark" -> {
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("a11y_guide_seen", true).apply()
+                result.success("ok")
+            }
             else -> return false
         }
         return true
@@ -205,6 +235,24 @@ object ToolboxController {
         return fill(ctx, entry.username, entry.password)
     }
 
+    private fun copyEntry(ctx: Context, id: String, which: String): String {
+        val entry = try {
+            VaultStore.find(ctx, id)
+        } catch (_: Throwable) {
+            return "error"
+        } ?: return "not_found"
+        val text = when (which) {
+            "user", "username", "account" -> entry.username
+            else -> entry.password
+        }
+        if (text.isEmpty()) return "empty"
+        return if (copyText(ctx, text)) {
+            if (which == "user" || which == "username" || which == "account") "copied_user" else "copied_pass"
+        } else {
+            "error"
+        }
+    }
+
     private fun openUrl(activity: Activity, url: String): String {
         if (!url.startsWith("https://")) return "error"
         return try {
@@ -222,10 +270,12 @@ object ToolboxController {
         val open = PendingIntent.getActivity(
             ctx,
             21,
-            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(ctx, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra("open_compat", "overlay"),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        post(ctx, NOTIFY_OVERLAY, "需要悬浮窗权限", "打开分身时才能显示工具箱。请在设置里允许平行空间显示在其他应用上层。", open)
+        post(ctx, NOTIFY_OVERLAY, "需要悬浮窗权限", "打开分身时才能显示工具箱。点此前往悬浮窗权限页。", open)
     }
 
     private fun notifyA11y(ctx: Context) {

@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.7 → 12307', () {
-    expect(kAppVersionName, '1.3.7');
-    expect(kAppVersionCode, 12307);
-    expect(encodeVersionCode(1, 3, 7), kAppVersionCode);
-    expect(versionCodeFromName('1.3.7'), 12307);
-    expect(encodeVersionCode(1, 3, 7), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 7), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 7), greaterThan(12306));
+  test('版本号只加最后一位：1.3.8 → 12308', () {
+    expect(kAppVersionName, '1.3.8');
+    expect(kAppVersionCode, 12308);
+    expect(encodeVersionCode(1, 3, 8), kAppVersionCode);
+    expect(versionCodeFromName('1.3.8'), 12308);
+    expect(encodeVersionCode(1, 3, 8), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 8), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 8), greaterThan(12307));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -83,7 +83,7 @@ void main() {
     expect(find.byType(CompatScreen), findsOneWidget);
     expect(find.text('悬浮窗'), findsOneWidget);
     expect(find.text('64 位'), findsOneWidget);
-    await t.tap(find.byTooltip('前往设置'));
+    await t.tap(find.byTooltip('前往设置').first);
     await settle(t);
     expect(native.methods, contains('compatOpen'));
 
@@ -96,15 +96,16 @@ void main() {
     await settle(t);
     expect(find.text('需要悬浮窗权限'), findsOneWidget);
     await t.tap(find.text('去开启'));
-    await settle(t);
+    await settle(t, 40);
     expect(native.methods, contains('setToolboxEnabled'));
+    expect(native.methods, contains('compatOpen'));
 
     Navigator.of(t.element(find.byType(ToolboxScreen))).pop();
     await settle(t);
     await t.scrollUntilVisible(find.text('本项目开源'), 400);
     expect(find.textContaining('流年似水'), findsOneWidget);
     expect(find.text('https://github.com/Liunian520/parallel_space'), findsOneWidget);
-    expect(find.textContaining('1.3.7'), findsWidgets);
+    expect(find.textContaining('1.3.8'), findsWidgets);
   });
 
   testWidgets('密码本可以直接添加、分组和删除', (t) async {
@@ -124,7 +125,7 @@ void main() {
     await t.tap(find.text('添加'));
     await settle(t);
     await t.enterText(find.widgetWithText(TextField, '名称'), '工作号');
-    await t.enterText(find.widgetWithText(TextField, '用户名'), 'wx');
+    await t.enterText(find.widgetWithText(TextField, '用户名 / 手机 / 学号'), 'wx');
     await t.enterText(find.widgetWithText(TextField, '密码'), 'secret');
     await t.tap(find.text('保存'));
     await settle(t, 30);

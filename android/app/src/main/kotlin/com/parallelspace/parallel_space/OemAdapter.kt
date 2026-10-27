@@ -14,15 +14,27 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.core.net.toUri
 
 /**
- * 厂商（ROM）适配集中处理：识别、桌面快捷方式权限、自启动 / 后台运行、电池优化、工作资料限制说明。
- * 所有跳转都先 resolveActivity 再 try/catch，逐个回退，最后回到“应用详情”。
+ * 厂商（ROM）适配集中处理：识别、桌面快捷方式、自启动 / 后台、电池优化、权限页跳转。
+ *
+ * 跳转一律不预检 resolveActivity（Android 11+ 包可见性会误判），逐个 try/catch，
+ * 最后落到标准系统页和应用详情。Activity 上下文优先不加 NEW_TASK，避免 HyperOS
+ * 把设置页丢到后台。
  */
 object OemAdapter {
-    enum class Family { XIAOMI, HUAWEI, HONOR, OPPO, VIVO, SAMSUNG, STOCK }
+    private const val TAG = "OemAdapter"
+
+    enum class Family { XIAOMI, HUAWEI, HONOR, OPPO, VIVO, SAMSUNG, MEIZU, STOCK }
+
+    /** 权限页跳转结果。 */
+    data class OpenResult(
+        val code: String,
+        val hint: String = "",
+    )
 
     @SuppressLint("PrivateApi")
     fun prop(key: String): String = try {
@@ -41,23 +53,40 @@ object OemAdapter {
             val c = Class.forName("com.huawei.system.BuildEx")
             "harmony".equals(c.getMethod("getOsBrand").invoke(null) as? String, ignoreCase = true)
         } catch (_: Throwable) {
-            prop("hw_sc.build.platform.version").isNotEmpty()
+            prop("hw_sc.build.platform.version").isNotEmpty() ||
+                prop("ro.build.version.harmony").isNotEmpty()
         }
+    }
+
+    /** 是否可识别为纯血鸿蒙 NEXT（不能跑 Android APK）。 */
+    val isHarmonyNext: Boolean by lazy {
+        isHarmony && (
+            prop("ro.product.os.dist.name").contains("next", true) ||
+                prop("ro.build.display.id").contains("NEXT", true) ||
+                prop("hw_sc.build.os.apiversion").let { it.isNotEmpty() && !it.startsWith("3") && Build.VERSION.SDK_INT == 0 }
+            )
     }
 
     /** 细分 ROM 标识。 */
     val rom: String by lazy {
         when {
-            prop("ro.mi.os.version.name").isNotEmpty() -> "hyperos"
+            prop("ro.mi.os.version.name").isNotEmpty() || prop("ro.mi.os.version.code").isNotEmpty() -> "hyperos"
             prop("ro.miui.ui.version.name").isNotEmpty() -> "miui"
-            maker("honor") || prop("ro.build.version.magic").isNotEmpty() -> "magicos"
+            maker("meizu") || prop("ro.build.display.id").contains("Flyme", true) ||
+                prop("ro.flyme.version.id").isNotEmpty() -> "flyme"
+            maker("honor") || prop("ro.build.version.magic").isNotEmpty() ||
+                prop("ro.honor.build.display.id").isNotEmpty() -> "magicos"
             maker("huawei") && isHarmony -> "harmony"
             maker("huawei") || prop("ro.build.version.emui").isNotEmpty() -> "emui"
             maker("oneplus") -> "oxygenos"
             maker("realme") -> "realmeui"
-            maker("oppo") || prop("ro.build.version.opporom").isNotEmpty() || prop("ro.build.version.oplusrom").isNotEmpty() -> "coloros"
-            maker("vivo", "iqoo") -> if (prop("ro.vivo.os.build.display.id").contains("OriginOS", true) ||
-                prop("ro.vivo.os.name").contains("Origin", true)) "originos" else "funtouch"
+            maker("oppo") || prop("ro.build.version.opporom").isNotEmpty() ||
+                prop("ro.build.version.oplusrom").isNotEmpty() -> "coloros"
+            maker("vivo", "iqoo") -> if (
+                prop("ro.vivo.os.build.display.id").contains("OriginOS", true) ||
+                prop("ro.vivo.os.name").contains("Origin", true) ||
+                prop("ro.vivo.os.version").contains("Origin", true)
+            ) "originos" else "funtouch"
             maker("samsung") -> "oneui"
             maker("google") || Build.MODEL.orEmpty().lowercase().contains("pixel") -> "pixel"
             else -> "stock"
@@ -72,39 +101,85 @@ object OemAdapter {
             "coloros", "oxygenos", "realmeui" -> Family.OPPO
             "originos", "funtouch" -> Family.VIVO
             "oneui" -> Family.SAMSUNG
+            "flyme" -> Family.MEIZU
             else -> Family.STOCK
         }
     }
 
+    /** 可读的 ROM 版本号（尽量从系统属性取）。 */
+    val romVersion: String by lazy {
+        when (rom) {
+            "hyperos" -> prop("ro.mi.os.version.name").ifBlank { prop("ro.mi.os.version.code") }
+            "miui" -> prop("ro.miui.ui.version.name")
+            "harmony" -> prop("hw_sc.build.platform.version").ifBlank { prop("ro.build.version.harmony") }
+            "emui" -> prop("ro.build.version.emui")
+            "magicos" -> prop("ro.build.version.magic").ifBlank { prop("ro.honor.build.display.id") }
+            "coloros" -> prop("ro.build.version.opporom").ifBlank { prop("ro.build.version.oplusrom") }
+            "oxygenos" -> prop("ro.build.version.oplusrom").ifBlank { prop("ro.oxygen.version") }
+            "realmeui" -> prop("ro.build.version.opporom").ifBlank { prop("ro.build.version.realmeui") }
+            "originos", "funtouch" -> prop("ro.vivo.os.version").ifBlank {
+                prop("ro.vivo.os.build.display.id")
+            }
+            "oneui" -> prop("ro.build.version.oneui").ifBlank { prop("ro.build.display.id") }
+            "flyme" -> prop("ro.flyme.version.id").ifBlank { prop("ro.build.display.id") }
+            else -> Build.VERSION.RELEASE.orEmpty()
+        }.trim()
+    }
+
     val label: String
         get() = when (rom) {
-            "hyperos" -> "小米 HyperOS"
-            "miui" -> "小米 MIUI"
-            "harmony" -> "华为 HarmonyOS"
-            "emui" -> "华为 EMUI"
-            "magicos" -> "荣耀 MagicOS"
-            "coloros" -> "OPPO ColorOS"
-            "oxygenos" -> "一加 OxygenOS / ColorOS"
-            "realmeui" -> "realme UI"
-            "originos" -> "vivo OriginOS"
-            "funtouch" -> "vivo Funtouch OS"
-            "oneui" -> "三星 One UI"
+            "hyperos" -> "小米 HyperOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "miui" -> "小米 MIUI" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "harmony" -> "华为 HarmonyOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "emui" -> "华为 EMUI" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "magicos" -> "荣耀 MagicOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "coloros" -> "OPPO ColorOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "oxygenos" -> "一加 OxygenOS / ColorOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "realmeui" -> "realme UI" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "originos" -> "vivo OriginOS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "funtouch" -> "vivo Funtouch OS" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "oneui" -> "三星 One UI" + romVersion.let { if (it.isBlank()) "" else " $it" }
+            "flyme" -> "魅族 Flyme" + romVersion.let { if (it.isBlank()) "" else " $it" }
             "pixel" -> "Google Pixel"
             else -> "原生 Android"
         }
 
+    val brandLabel: String
+        get() = when (family) {
+            Family.XIAOMI -> when {
+                brand.contains("redmi") -> "Redmi"
+                brand.contains("poco") -> "POCO"
+                else -> "小米"
+            }
+            Family.HUAWEI -> "华为"
+            Family.HONOR -> "荣耀"
+            Family.OPPO -> when {
+                brand.contains("oneplus") || manufacturer.contains("oneplus") -> "一加"
+                brand.contains("realme") -> "realme"
+                else -> "OPPO"
+            }
+            Family.VIVO -> if (brand.contains("iqoo") || manufacturer.contains("iqoo")) "iQOO" else "vivo"
+            Family.SAMSUNG -> "三星"
+            Family.MEIZU -> "魅族"
+            Family.STOCK -> if (rom == "pixel") "Google" else Build.BRAND.orEmpty().ifBlank { "未知" }
+        }
+
     /** 国产 ROM 默认会拦截第三方桌面快捷方式，需要用户在权限页开启。 */
-    val shortcutNeedsPermission get() = family in setOf(Family.XIAOMI, Family.HUAWEI, Family.HONOR, Family.OPPO, Family.VIVO)
+    val shortcutNeedsPermission get() = family in setOf(
+        Family.XIAOMI, Family.HUAWEI, Family.HONOR, Family.OPPO, Family.VIVO, Family.MEIZU,
+    )
 
     /** 旧式 INSTALL_SHORTCUT 广播仍被这些启动器接受。 */
-    val supportsLegacyShortcut get() = family in setOf(Family.XIAOMI, Family.HUAWEI, Family.HONOR, Family.VIVO, Family.OPPO)
+    val supportsLegacyShortcut get() = family in setOf(
+        Family.XIAOMI, Family.HUAWEI, Family.HONOR, Family.VIVO, Family.OPPO, Family.MEIZU,
+    )
 
     /** 系统自带“应用双开 / 分身”所用的 userId（不是工作资料，必须排除）。 */
     val oemCloneUserIds = setOf(95 /* 三星双开 */, 128 /* 华为应用分身 */, 666 /* vivo */, 999 /* 小米 / OPPO */)
 
     /**
      * 桌面快捷方式权限：true 允许 / false 拒绝 / null 无法判断。
-     * 目前只有 MIUI / HyperOS 能可靠读取（AppOps 10017）；其他 ROM 由请求后的回执判断。
+     * 目前只有 MIUI / HyperOS 能可靠读取（AppOps 10017）。
      */
     fun shortcutPermission(ctx: Context): Boolean? {
         if (family != Family.XIAOMI) return null
@@ -119,39 +194,219 @@ object OemAdapter {
         }
     }
 
-    // ---------------- 跳转 ----------------
+    // ---------------- 跳转核心 ----------------
     private fun cn(pkg: String, cls: String) = Intent().setComponent(ComponentName(pkg, cls))
 
     private fun details(ctx: Context) =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${ctx.packageName}".toUri())
 
-    /** 依次尝试；返回 'rom'（厂商页）/ 'details'（应用详情）/ 'error'。 */
+    /**
+     * 依次尝试。返回 rom / details / settings / error。
+     * Activity 优先不加 NEW_TASK；失败再带 NEW_TASK 重试一次。
+     */
     fun launchFirst(act: Activity, intents: List<Intent>): String {
         for (i in intents) {
             if (tryStart(act, i)) return "rom"
         }
         if (tryStart(act, details(act))) return "details"
-        return if (tryStart(act, Intent(Settings.ACTION_SETTINGS))) "details" else "error"
+        return if (tryStart(act, Intent(Settings.ACTION_SETTINGS))) "settings" else "error"
+    }
+
+    fun launchFirstDetailed(act: Activity, intents: List<Intent>, kind: String): OpenResult {
+        val code = launchFirst(act, intents)
+        if (code != "error") return OpenResult(code)
+        return OpenResult("error", manualHint(kind))
     }
 
     /**
      * 不先卡 resolveActivity：Android 11+ 的包可见性会让厂商页解析失败，但 startActivity 仍然能打开。
-     * 打不开就 catch，交给下一个地址。
      */
     private fun tryStart(act: Activity, i: Intent): Boolean {
-        return try {
+        // 1) Activity 上下文：不加 NEW_TASK，避免 HyperOS 把设置丢到后台
+        try {
+            act.startActivity(Intent(i))
+            return true
+        } catch (t: Throwable) {
+            Log.d(TAG, "start without NEW_TASK failed: ${i.component ?: i.action}: ${t.message}")
+        }
+        // 2) 带 NEW_TASK 再试（部分厂商页要求）
+        try {
             act.startActivity(Intent(i).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            true
-        } catch (_: Throwable) {
-            false
+            return true
+        } catch (t: Throwable) {
+            Log.d(TAG, "start with NEW_TASK failed: ${i.component ?: i.action}: ${t.message}")
+            return false
         }
     }
+
+    /** 各品牌手动路径提示（全部跳转失败时展示）。 */
+    fun manualHint(kind: String): String {
+        val where = when (family to kind) {
+            Family.XIAOMI to "overlay" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 显示悬浮窗"
+            Family.XIAOMI to "accessibility" -> "设置 → 更多设置 → 无障碍 → 已下载的应用 / 已安装的服务 → 平行空间"
+            Family.XIAOMI to "autostart" -> "设置 → 应用设置 → 授权管理 → 自启动管理 → 允许平行空间"
+            Family.XIAOMI to "battery" -> "设置 → 电池 → 应用电量管理管理 → 平行空间 → 无限制"
+            Family.XIAOMI to "shortcut" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 桌面快捷方式"
+            Family.HUAWEI to "overlay", Family.HONOR to "overlay" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
+            Family.HUAWEI to "accessibility", Family.HONOR to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 平行空间"
+            Family.HUAWEI to "autostart", Family.HONOR to "autostart" -> "设置 → 应用和服务 → 应用启动管理 → 平行空间 → 手动管理并全部允许"
+            Family.OPPO to "overlay" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
+            Family.OPPO to "accessibility" -> "设置 → 其他设置 → 无障碍 → 平行空间"
+            Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许平行空间"
+            Family.VIVO to "overlay" -> "设置 → 应用与权限 → 权限管理 → 权限 → 悬浮窗 → 平行空间"
+            Family.VIVO to "accessibility" -> "设置 → 快捷与辅助 → 无障碍 → 平行空间"
+            Family.VIVO to "autostart" -> "设置 → 电池 → 后台耗电管理 / 权限 → 自启动 → 平行空间"
+            Family.SAMSUNG to "overlay" -> "设置 → 应用 → 平行空间 → 在其他应用上层显示"
+            Family.SAMSUNG to "accessibility" -> "设置 → 辅助功能 → 已安装的应用 → 平行空间"
+            Family.SAMSUNG to "battery" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用"
+            Family.MEIZU to "overlay" -> "设置 → 应用管理 → 平行空间 → 权限管理 → 悬浮窗"
+            Family.MEIZU to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 平行空间"
+            else -> when (kind) {
+                "overlay" -> "设置 → 应用 → 特殊应用权限 → 显示在其他应用的上层 → 平行空间"
+                "accessibility" -> "设置 → 无障碍 → 已下载的应用 / 已安装的服务 → 平行空间"
+                "battery" -> "设置 → 应用 → 平行空间 → 电池 → 不优化"
+                "notification" -> "设置 → 应用 → 平行空间 → 通知"
+                "shortcut" -> "设置 → 应用 → 平行空间 → 权限"
+                else -> "设置 → 应用 → 平行空间"
+            }
+        }
+        return "没能自动打开设置页。请手动：$where"
+    }
+
+    // ---------------- Intent 表（可单测） ----------------
+
+    /**
+     * 返回某类权限跳转的有序步骤标签（不含 Context）。
+     * 每条链必须以 standard / details / settings 一类通用回退结尾。
+     * 供单元测试与调试使用。
+     */
+    fun chainLabels(kind: String, fam: Family = family): List<String> = when (kind) {
+        "overlay" -> overlayChainLabels(fam)
+        "accessibility" -> accessibilityChainLabels(fam)
+        "autostart" -> autoStartChainLabels(fam)
+        "shortcut" -> shortcutChainLabels(fam)
+        "notification" -> listOf("ACTION_APP_NOTIFICATION_SETTINGS", "APPLICATION_DETAILS", "SETTINGS")
+        "battery" -> listOf(
+            "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+            "ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS",
+            "APPLICATION_DETAILS",
+            "SETTINGS",
+        )
+        else -> listOf("APPLICATION_DETAILS", "SETTINGS")
+    }
+
+    fun overlayChainLabels(fam: Family = family): List<String> {
+        val oem = when (fam) {
+            Family.XIAOMI -> listOf(
+                "miui:PermissionsEditorActivity",
+                "miui:AppPermissionsEditorActivity",
+                "miui.intent.action.APP_PERM_EDITOR",
+                "miui:AddViewWindowActivity",
+            )
+            Family.HUAWEI -> listOf(
+                "huawei:AddViewMonitorActivity",
+                "huawei:NotificationManagerActivity",
+                "huawei:MainActivity(permission)",
+            )
+            Family.HONOR -> listOf(
+                "honor:AddViewMonitorActivity",
+                "honor:MainActivity(permission)",
+                "huawei:AddViewMonitorActivity",
+            )
+            Family.OPPO -> listOf(
+                "coloros:FloatWindowListActivity",
+                "oplus:FloatWindowListActivity",
+                "coloros:sysfloatwindow.FloatWindowListActivity",
+                "oppo.safe:FloatWindowListActivity",
+            )
+            Family.VIVO -> listOf(
+                "vivo:SoftPermissionDetailActivity",
+                "iqoo:FloatWindowManager",
+                "vivo:PurviewTabActivity",
+            )
+            Family.SAMSUNG -> listOf(
+                "samsung:SmartManagerDashBoardActivity",
+                "samsung.lool:BatteryActivity",
+            )
+            Family.MEIZU -> listOf(
+                "meizu:AppSecurityActivity",
+                "meizu:PermissionActivity",
+            )
+            Family.STOCK -> emptyList()
+        }
+        return oem + listOf(
+            "ACTION_MANAGE_OVERLAY_PERMISSION:package",
+            "ACTION_MANAGE_OVERLAY_PERMISSION",
+            "APPLICATION_DETAILS",
+            "SETTINGS",
+        )
+    }
+
+    fun accessibilityChainLabels(fam: Family = family): List<String> {
+        val oem = when (fam) {
+            Family.XIAOMI -> listOf("miui:PrivacySettingsActivity", "ACCESSIBILITY_DETAILS_SETTINGS")
+            Family.HUAWEI -> listOf("huawei:AccessibilityActivity", "ACCESSIBILITY_DETAILS_SETTINGS")
+            Family.HONOR -> listOf("honor:AccessibilityActivity", "ACCESSIBILITY_DETAILS_SETTINGS")
+            else -> listOf("ACCESSIBILITY_DETAILS_SETTINGS")
+        }
+        return oem + listOf("ACTION_ACCESSIBILITY_SETTINGS", "APPLICATION_DETAILS", "SETTINGS")
+    }
+
+    fun autoStartChainLabels(fam: Family = family): List<String> {
+        val oem = when (fam) {
+            Family.XIAOMI -> listOf("miui:AutoStartManagementActivity", "miui:HiddenAppsConfigActivity")
+            Family.HUAWEI -> listOf(
+                "huawei:StartupNormalAppListActivity",
+                "huawei:ProtectActivity",
+                "huawei:StartupAppControlActivity",
+            )
+            Family.HONOR -> listOf("honor:StartupNormalAppListActivity", "huawei:StartupNormalAppListActivity")
+            Family.OPPO -> listOf(
+                "coloros:StartupAppListActivity",
+                "coloros:permission.startup.StartupAppListActivity",
+                "oplus:PowerUsageModelActivity",
+                "oppo.safe:StartupAppListActivity",
+            )
+            Family.VIVO -> listOf(
+                "vivo:BgStartUpManagerActivity",
+                "iqoo:BgStartUpManager",
+                "iqoo:AddWhiteListActivity",
+            )
+            Family.SAMSUNG -> listOf("samsung.lool:BatteryActivity", "samsung.sm:BatteryActivity")
+            Family.MEIZU -> listOf("meizu:SmartPowerActivity", "meizu:AppSecurityActivity")
+            Family.STOCK -> emptyList()
+        }
+        return oem + listOf("APPLICATION_DETAILS", "SETTINGS")
+    }
+
+    fun shortcutChainLabels(fam: Family = family): List<String> {
+        val oem = when (fam) {
+            Family.XIAOMI -> listOf(
+                "miui:PermissionsEditorActivity",
+                "miui:AppPermissionsEditorActivity",
+                "miui.intent.action.APP_PERM_EDITOR",
+            )
+            Family.HUAWEI -> listOf("huawei:SingleAppActivity", "huawei:MainActivity(permission)")
+            Family.HONOR -> listOf("honor:SingleAppActivity", "honor:MainActivity(permission)")
+            Family.OPPO -> listOf(
+                "oplus:PermissionManagerActivity",
+                "coloros:PermissionManagerActivity",
+                "coloros:PermissionSinglePageActivity",
+            )
+            Family.VIVO -> listOf("vivo:SoftPermissionDetailActivity", "iqoo:SoftPermissionDetailActivity")
+            Family.MEIZU -> listOf("meizu:AppSecurityActivity")
+            else -> emptyList()
+        }
+        return oem + listOf("APPLICATION_DETAILS", "SETTINGS")
+    }
+
+    /** 所有主流品牌都必须有完整链，供测试遍历。 */
+    fun allFamilies(): List<Family> = Family.entries.toList()
 
     fun shortcutPermissionIntents(ctx: Context): List<Intent> {
         val p = ctx.packageName
         return when (family) {
             Family.XIAOMI -> listOf(
-                // HyperOS / MIUI：桌面快捷方式是权限编辑器里的一项（AppOps 10017），不要只打开应用详情。
                 cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
                     .putExtra("extra_pkgname", p),
                 cn("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity")
@@ -180,6 +435,10 @@ object OemAdapter {
                     .putExtra("packagename", p),
                 cn("com.iqoo.secure", "com.iqoo.secure.safeguard.SoftPermissionDetailActivity").putExtra("packagename", p),
                 cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity"),
+            )
+            Family.MEIZU -> listOf(
+                cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity").putExtra("packageName", p),
+                cn("com.meizu.safe", "com.meizu.safe.permission.PermissionActivity"),
             )
             else -> emptyList()
         }
@@ -215,10 +474,14 @@ object OemAdapter {
             cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
             cn("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"),
         )
+        Family.MEIZU -> listOf(
+            cn("com.meizu.safe", "com.meizu.safe.powerui.PowerAppPermissionActivity"),
+            cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity"),
+        )
         Family.STOCK -> emptyList()
     }
 
-    fun hasAutoStartPage(ctx: Context) = autoStartIntents(ctx).any { it.resolveActivity(ctx.packageManager) != null }
+    fun hasAutoStartPage(ctx: Context) = autoStartIntents(ctx).isNotEmpty()
 
     // ---------------- 电池优化 ----------------
     fun isIgnoringBattery(ctx: Context): Boolean = try {
@@ -232,7 +495,11 @@ object OemAdapter {
         if (isIgnoringBattery(act)) return "ok"
         val req = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${act.packageName}".toUri())
         if (tryStart(act, req)) return "requested"
-        return if (launchFirst(act, listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))) != "error") "requested" else "error"
+        return if (launchFirst(act, listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))) != "error") {
+            "requested"
+        } else {
+            "error"
+        }
     }
 
     // ---------------- 工作资料说明 ----------------
@@ -244,6 +511,7 @@ object OemAdapter {
             Family.OPPO -> "ColorOS / OxygenOS / realme UI 的「应用分身」「系统分身」不是工作资料，通常可以共存。"
             Family.VIVO -> "OriginOS / Funtouch 的「应用分身」不是工作资料；部分版本会禁止第三方创建工作资料。"
             Family.SAMSUNG -> "三星「安全文件夹」（Knox）本身就是一个工作资料，已启用时无法再创建；「双开应用」不受影响。"
+            Family.MEIZU -> "Flyme 的「应用分身」不是工作资料；请以虚拟引擎为主路径。"
             Family.STOCK -> if (rom == "pixel") {
                 "Pixel 使用系统工作资料。平行空间的主路径仍然是进程内虚拟引擎。"
             } else {
@@ -294,9 +562,17 @@ object OemAdapter {
     fun report(ctx: Context): Map<String, Any?> = mapOf(
         "rom" to rom,
         "romLabel" to label,
+        "romVersion" to romVersion,
+        "brand" to brandLabel,
+        "family" to family.name,
+        "manufacturer" to Build.MANUFACTURER.orEmpty(),
+        "model" to Build.MODEL.orEmpty(),
         "sdk" to Build.VERSION.SDK_INT,
         "release" to Build.VERSION.RELEASE.orEmpty(),
         "abi" to Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
+        "harmonyNext" to isHarmonyNext,
+        "overlayHint" to manualHint("overlay"),
+        "accessibilityHint" to manualHint("accessibility"),
         "items" to checks(ctx).map {
             mapOf(
                 "id" to it.id,
@@ -321,19 +597,30 @@ object OemAdapter {
         platformCheck(),
     )
 
-    /** 打开对应设置页。每条路径都在 [launchFirst] 里逐个 try。 */
-    fun openCheck(act: Activity, id: String): String = when (id) {
-        "overlay" -> launchFirst(act, overlayIntents(act))
-        "accessibility" -> {
-            ToolboxController.armAccessibility(act)
-            launchFirst(act, accessibilityIntents(act))
+    /** 打开对应设置页。每条路径都在 [launchFirst] 里逐个 try。失败时附带手动路径。 */
+    fun openCheck(act: Activity, id: String): String {
+        val r = when (id) {
+            "overlay" -> launchFirstDetailed(act, overlayIntents(act), "overlay")
+            "accessibility" -> {
+                ToolboxController.armAccessibility(act)
+                launchFirstDetailed(act, accessibilityIntents(act), "accessibility")
+            }
+            "notification" -> launchFirstDetailed(act, notificationIntents(act), "notification")
+            "battery" -> {
+                val code = requestIgnoreBattery(act)
+                if (code == "error") OpenResult("error", manualHint("battery")) else OpenResult(code)
+            }
+            "autostart" -> launchFirstDetailed(act, autoStartIntents(act), "autostart")
+            "shortcut" -> launchFirstDetailed(
+                act,
+                shortcutPermissionIntents(act).ifEmpty { listOf(details(act)) },
+                "shortcut",
+            )
+            "lock" -> launchFirstDetailed(act, listOf(Intent(Settings.ACTION_SECURITY_SETTINGS)), "lock")
+            else -> OpenResult("none")
         }
-        "notification" -> launchFirst(act, notificationIntents(act))
-        "battery" -> requestIgnoreBattery(act)
-        "autostart" -> launchFirst(act, autoStartIntents(act))
-        "shortcut" -> launchFirst(act, shortcutPermissionIntents(act).ifEmpty { listOf(details(act)) })
-        "lock" -> launchFirst(act, listOf(Intent(Settings.ACTION_SECURITY_SETTINGS)))
-        else -> "none"
+        // Flutter 侧用字符串；错误时用 "error|<hint>" 传手动路径
+        return if (r.code == "error" && r.hint.isNotBlank()) "error|${r.hint}" else r.code
     }
 
     private fun overlayCheck(ctx: Context): Check {
@@ -345,6 +632,7 @@ object OemAdapter {
             Family.OPPO -> "ColorOS：权限里打开「悬浮窗」。"
             Family.VIVO -> "OriginOS：权限里打开「悬浮窗」。"
             Family.SAMSUNG -> "One UI：使用系统的「显示在其他应用的上层」。"
+            Family.MEIZU -> "Flyme：权限管理里允许「悬浮窗」。"
             Family.STOCK -> if (rom == "pixel") "Pixel：使用系统的「显示在其他应用的上层」。" else "使用系统的悬浮窗权限页。"
         }
         return Check("overlay", "悬浮窗", if (on) "ok" else "off", where + if (on) " 已允许。" else " 尚未允许，工具箱小窗不会出现。", true)
@@ -360,8 +648,8 @@ object OemAdapter {
         }
         val detail = when {
             on -> "已开启。只有你点「填入」时，才会把用户名和密码写入当前输入框。"
-            killed -> "系统可能把无障碍服务关掉了。一键填入会改成复制到剪贴板，并在 30 秒后清除。可以重新开启。"
-            else -> "未开启时，填入会复制到剪贴板，30 秒后自动清除。厂商的省电策略有时会关掉无障碍服务。"
+            killed -> "系统可能把无障碍服务关掉了。一键填入会改成复制到剪贴板。可以重新开启。"
+            else -> "未开启时，填入会复制到剪贴板。请开启「平行空间」无障碍服务后即可一键填入。"
         }
         return Check("accessibility", "无障碍填入", status, detail, true)
     }
@@ -387,6 +675,7 @@ object OemAdapter {
             Family.HUAWEI, Family.HONOR -> " 华为 / 荣耀还要允许后台活动。"
             Family.OPPO, Family.VIVO -> " ColorOS / OriginOS 建议同时允许后台运行。"
             Family.SAMSUNG -> " One UI 可在「不受监视的应用程序」里加入平行空间。"
+            Family.MEIZU -> " Flyme 建议允许后台运行。"
             Family.STOCK -> ""
         }
         return Check(
@@ -429,6 +718,7 @@ object OemAdapter {
             Family.OPPO -> "ColorOS 请在自启动管理和后台耗电里允许平行空间。"
             Family.VIVO -> "OriginOS 请在「后台弹出」和自启动里允许平行空间。权限页打不开时会回到应用详情。"
             Family.SAMSUNG -> "One UI 请在电池里把平行空间设为不受限。"
+            Family.MEIZU -> "Flyme 请在后台管理里允许平行空间。"
             Family.STOCK -> ""
         } + if (restricted) " 系统报告后台已被限制。" else ""
         return Check("autostart", "自启动与后台", status, detail, true)
@@ -448,6 +738,7 @@ object OemAdapter {
             Family.OPPO -> "ColorOS 请在权限页允许「桌面快捷方式」。系统没有稳定的读取接口。"
             Family.VIVO -> "OriginOS 请在权限页允许「桌面快捷方式」。系统没有稳定的读取接口。"
             Family.SAMSUNG -> "One UI 一般可以直接固定快捷方式。"
+            Family.MEIZU -> "Flyme 需要允许创建桌面快捷方式。"
             Family.STOCK -> "当前系统一般可以直接添加桌面快捷方式。"
         }
         return Check("shortcut", "桌面快捷方式", status, detail, shortcutNeedsPermission || perm == false)
@@ -519,42 +810,61 @@ object OemAdapter {
             0L
         }
         if (page >= 16384L) notes += "本机页大小为 ${page} 字节，虚拟引擎的 so 按 16KB 对齐"
+        if (isHarmonyNext) notes += "检测到可能是 HarmonyOS NEXT，无法安装或运行 Android 应用"
         if (notes.isEmpty()) notes += "当前系统版本没有需要单独处理的行为变更"
-        val status = if (sdk >= 36) "ok" else "ok"
-        return Check("platform", "系统版本行为", status, "Android ${Build.VERSION.RELEASE}（API $sdk）。" + notes.joinToString("；") + "。", false)
+        return Check("platform", "系统版本行为", "ok", "Android ${Build.VERSION.RELEASE}（API $sdk）。" + notes.joinToString("；") + "。", false)
     }
 
     fun overlayIntents(ctx: Context): List<Intent> {
         val p = ctx.packageName
-        val standard = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$p".toUri())
+        val standardPkg = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$p".toUri())
+        val standardBare = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
         val oem = when (family) {
             Family.XIAOMI -> listOf(
-                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity").putExtra("extra_pkgname", p),
+                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    .putExtra("extra_pkgname", p),
+                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity")
+                    .putExtra("extra_pkgname", p),
                 Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
+                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    .setAction("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
+                // 部分 HyperOS 还有悬浮窗专用页
+                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.AddViewWindowActivity")
+                    .putExtra("extra_pkgname", p),
             )
             Family.HUAWEI -> listOf(
                 cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.notificationmanager.ui.NotificationManagmentActivity"),
                 cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity"),
             )
             Family.HONOR -> listOf(
                 cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.addviewmonitor.AddViewMonitorActivity"),
                 cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.MainActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
             )
             Family.OPPO -> listOf(
                 cn("com.coloros.safecenter", "com.coloros.safecenter.permission.floatwindow.FloatWindowListActivity"),
                 cn("com.oplus.safecenter", "com.oplus.safecenter.sysfloatwindow.FloatWindowListActivity"),
                 cn("com.coloros.safecenter", "com.coloros.safecenter.sysfloatwindow.FloatWindowListActivity"),
+                cn("com.oppo.safe", "com.oppo.safe.permission.floatwindow.FloatWindowListActivity"),
             )
             Family.VIVO -> listOf(
-                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity").putExtra("packagename", p),
+                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
+                    .putExtra("packagename", p),
                 cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.FloatWindowManager"),
+                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity"),
             )
             Family.SAMSUNG -> listOf(
                 cn("com.samsung.android.sm", "com.samsung.android.sm.app.dashboard.SmartManagerDashBoardActivity"),
+                cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+            )
+            Family.MEIZU -> listOf(
+                cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity").putExtra("packageName", p),
+                cn("com.meizu.safe", "com.meizu.safe.permission.PermissionActivity"),
             )
             Family.STOCK -> emptyList()
         }
-        return oem + standard
+        return oem + standardPkg + standardBare
     }
 
     fun accessibilityIntents(ctx: Context): List<Intent> {
@@ -563,6 +873,8 @@ object OemAdapter {
             listOf(
                 Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
                     .putExtra(Intent.EXTRA_COMPONENT_NAME, component.flattenToString()),
+                Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                    .putExtra("android.intent.extra.COMPONENT_NAME", component),
             )
         } else {
             emptyList()

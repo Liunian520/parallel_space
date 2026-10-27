@@ -32,7 +32,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    NativeBridge.listen(onOpenClone: _openFromShortcut, onMockChanged: _syncMock, onPinned: PinWatcher.notifyPinned);
+    NativeBridge.listen(
+      onOpenClone: _openFromShortcut,
+      onMockChanged: _syncMock,
+      onPinned: PinWatcher.notifyPinned,
+      onPermChanged: (overlay, _) async {
+        if (!mounted) return;
+        final settings = context.read<SettingsStore>();
+        if (settings.toolboxOverlay && overlay) {
+          await NativeBridge.setToolboxEnabled(true);
+        }
+      },
+    );
     _freezeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _autoFreeze());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -73,6 +84,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _syncMock(); // 可能在快捷开关 / 通知中被停止
       // 系统设置中可能开关了工作应用 / 卸载了应用
       context.read<CloneStore>().refresh().then((_) => _autoFreeze());
+      final settings = context.read<SettingsStore>();
+      NativeBridge.setToolboxEnabled(settings.toolboxOverlay);
     }
   }
 

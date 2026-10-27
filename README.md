@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.7-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.8-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -21,7 +21,7 @@
 | 🧰 | 工具箱 | 分身在前台时出现可拖动、可收起的悬浮小窗 |
 | 🔑 | 账号密码本 | 本机保存，按分身或包名分组；一点即可填入（无障碍）或复制到剪贴板；不设生物识别门禁 |
 | 🔄 | 应用内更新 | 设置里检查更新；清单走 GitHub 直链，APK 走网盘永久直链 `/f/...`（无 Link 盾）；失败时可浏览器打开分享页 |
-| 📱 | 机型适配 | 小米、华为、荣耀、OPPO、vivo、三星和 Pixel 的权限页集中处理，设置里可以逐项查看 |
+| 📱 | 机型适配 | 小米 / Redmi / POCO、华为、荣耀、OPPO / 一加 / realme、vivo / iQOO、三星、魅族和 Pixel 的权限页集中处理，设置里可以逐项查看 |
 
 另外还有：私密空间（PIN / 生物识别）、备份与迁移（不含 PIN，也不含密码本）、桌面小组件、主题（跟随系统 / 动态取色）。
 
@@ -31,12 +31,13 @@
 
 | 机型 | 系统 | 适配重点 |
 | --- | --- | --- |
-| 小米 / Redmi | HyperOS、MIUI | 自启动、电池无限制、悬浮窗、桌面快捷方式（AppOps 10017）、进程名补丁 |
-| 华为 | HarmonyOS、EMUI | 应用启动管理、悬浮窗。HarmonyOS NEXT（纯血鸿蒙）不能安装 Android 应用 |
+| 小米 / Redmi / POCO | MIUI 12–14、HyperOS 1–3 | 自启动、电池无限制、悬浮窗、桌面快捷方式（AppOps 10017）、进程名补丁 |
+| 华为 | EMUI、HarmonyOS 2–4 | 应用启动管理、悬浮窗。HarmonyOS NEXT（纯血鸿蒙）不能安装 Android 应用 |
 | 荣耀 | MagicOS | 启动管理、悬浮窗、快捷方式 |
 | OPPO / 一加 / realme | ColorOS、OxygenOS、realme UI | 自启动、悬浮窗、桌面快捷方式权限页 |
 | vivo / iQOO | OriginOS、Funtouch | 后台弹出、自启动、悬浮窗、快捷方式 |
 | 三星 | One UI | 电池不受限、安全文件夹与工作资料冲突时的说明 |
+| 魅族 | Flyme | 悬浮窗、后台与权限页回退 |
 | Google Pixel 及原生 Android | Android 8.0–16 | 标准悬浮窗、通知、电池优化页面 |
 
 应用 `minSdk` 为 24（Android 8.0）。发布包只包含 **arm64-v8a**，32 位系统无法安装。
@@ -61,7 +62,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.7+12307**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.8+12308**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -69,9 +70,9 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.7`（versionCode `12307`），下一次是 `1.3.8`（`12308`）。
+只把修订号加 1：当前 `1.3.8`（versionCode `12308`），下一次是 `1.3.9`（`12309`）。
 
-1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.7→12307）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
+1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.8→12308）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
 每次改版本，同时更新：
 
@@ -147,4 +148,4 @@ HyperOS 的「应用双开」不是工作资料，本应用也不依赖它。引
 
 **工具箱把整屏糊住、分身点不了**
 
-1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。1.3.7 进一步修了编辑时气泡被误拆、键盘弹出导致面板消失的问题，并改为 START_STICKY + 看门狗自动恢复。
+1.3.5 及更早在悬浮窗上开了系统 `FLAG_BLUR_BEHIND`。1.3.6 已去掉；小窗只是半透明小卡片，窗外触摸会穿透到下层应用。1.3.7 进一步修了编辑时气泡被误拆、键盘弹出导致面板消失的问题，并改为 START_STICKY + 看门狗自动恢复。1.3.8 重做了气泡/面板视觉（贴边半隐、回弹吸附、Material You），并修好了悬浮窗权限跳转。

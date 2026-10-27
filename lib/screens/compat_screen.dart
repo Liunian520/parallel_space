@@ -38,6 +38,9 @@ class CompatItem {
 class CompatReport {
   const CompatReport({
     required this.romLabel,
+    required this.brand,
+    required this.romVersion,
+    required this.model,
     required this.sdk,
     required this.release,
     required this.abi,
@@ -45,6 +48,9 @@ class CompatReport {
   });
 
   final String romLabel;
+  final String brand;
+  final String romVersion;
+  final String model;
   final int sdk;
   final String release;
   final String abi;
@@ -54,6 +60,9 @@ class CompatReport {
     final itemsRaw = raw?['items'];
     return CompatReport(
       romLabel: raw?['romLabel'] is String ? raw!['romLabel'] as String : '未知机型',
+      brand: raw?['brand'] is String ? raw!['brand'] as String : '',
+      romVersion: raw?['romVersion'] is String ? raw!['romVersion'] as String : '',
+      model: raw?['model'] is String ? raw!['model'] as String : '',
       sdk: (raw?['sdk'] as num?)?.toInt() ?? 0,
       release: raw?['release'] is String ? raw!['release'] as String : '',
       abi: raw?['abi'] is String ? raw!['abi'] as String : '',
@@ -72,14 +81,26 @@ class CompatScreen extends StatefulWidget {
   State<CompatScreen> createState() => _CompatScreenState();
 }
 
-class _CompatScreenState extends State<CompatScreen> {
+class _CompatScreenState extends State<CompatScreen> with WidgetsBindingObserver {
   CompatReport? _report;
   var _loading = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
@@ -96,15 +117,21 @@ class _CompatScreenState extends State<CompatScreen> {
       showGlassSnack(context, '这项没有单独的设置页');
       return;
     }
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
     final r = await NativeBridge.compatOpen(item.id);
     if (!mounted) return;
-    showGlassSnack(context, switch (r) {
+    final code = NativeBridge.compatOpenCode(r);
+    final hint = NativeBridge.compatOpenHint(r);
+    showGlassSnack(context, switch (code) {
       'rom' => '已打开厂商设置',
       'details' => '已打开应用详情',
+      'settings' => '已打开系统设置',
       'ok' || 'requested' => '已跳转',
-      'error' => '没有打开设置页',
+      'error' => hint.isEmpty ? '没有打开设置页' : hint,
       _ => '已尝试打开',
     });
+    await _load();
   }
 
   @override
@@ -131,7 +158,13 @@ class _CompatScreenState extends State<CompatScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
                   child: Text(
-                    '${report.romLabel} · Android ${report.release.isEmpty ? '' : report.release}（API ${report.sdk}）${report.abi.isEmpty ? '' : ' · ${report.abi}'}',
+                    [
+                      if (report.brand.isNotEmpty) report.brand,
+                      report.romLabel,
+                      if (report.model.isNotEmpty) report.model,
+                      'Android ${report.release.isEmpty ? '' : report.release}（API ${report.sdk}）',
+                      if (report.abi.isNotEmpty) report.abi,
+                    ].where((e) => e.trim().isNotEmpty).join(' · '),
                     style: tt.bodyMedium,
                   ),
                 ),

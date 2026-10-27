@@ -187,16 +187,39 @@ class FakeNative {
       case 'compatReport':
         return {
           'rom': rom,
-          'romLabel': rom == 'hyperos' ? '小米 HyperOS' : '原生 Android',
+          'romLabel': rom == 'hyperos' ? '小米 HyperOS 2.0' : '原生 Android',
+          'romVersion': rom == 'hyperos' ? '2.0' : '',
+          'brand': rom == 'hyperos' ? 'Redmi' : 'Google',
+          'family': rom == 'hyperos' ? 'XIAOMI' : 'STOCK',
+          'model': 'Test',
           'sdk': 35,
           'release': '15',
           'abi': 'arm64-v8a',
           'items': [
-            {'id': 'overlay', 'title': '悬浮窗', 'status': 'off', 'detail': '尚未允许显示悬浮窗', 'canOpen': true},
+            {'id': 'overlay', 'title': '悬浮窗', 'status': overlayGranted ? 'ok' : 'off', 'detail': '尚未允许显示悬浮窗', 'canOpen': true},
+            {'id': 'accessibility', 'title': '无障碍填入', 'status': 'off', 'detail': '未开启', 'canOpen': true},
             {'id': 'abi', 'title': '64 位', 'status': 'ok', 'detail': '当前进程是 64 位', 'canOpen': false},
           ],
         };
       case 'compatOpen':
+        return 'rom';
+      case 'compatChains':
+        return {
+          'XIAOMI': {
+            'overlay': ['miui:PermissionsEditorActivity', 'ACTION_MANAGE_OVERLAY_PERMISSION:package', 'APPLICATION_DETAILS', 'SETTINGS'],
+            'accessibility': ['ACTION_ACCESSIBILITY_SETTINGS', 'APPLICATION_DETAILS', 'SETTINGS'],
+            'autostart': ['miui:AutoStartManagementActivity', 'APPLICATION_DETAILS', 'SETTINGS'],
+            'shortcut': ['miui:PermissionsEditorActivity', 'APPLICATION_DETAILS', 'SETTINGS'],
+            'notification': ['ACTION_APP_NOTIFICATION_SETTINGS', 'APPLICATION_DETAILS', 'SETTINGS'],
+            'battery': ['ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', 'APPLICATION_DETAILS', 'SETTINGS'],
+          },
+        };
+      case 'a11yGuideSeen':
+        return true;
+      case 'a11yGuideMark':
+        return 'ok';
+      case 'vaultCopy':
+        return (a['which'] == 'user' || a['which'] == 'username') ? 'copied_user' : 'copied_pass';
       case 'openUrl':
         return 'ok';
       case 'vaultUnlock':

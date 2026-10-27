@@ -9,6 +9,28 @@ import '../widgets/section_tile.dart';
 import 'compat_screen.dart';
 import 'vault_screen.dart';
 
+String _openMessage(String raw) {
+  final code = NativeBridge.compatOpenCode(raw);
+  final hint = NativeBridge.compatOpenHint(raw);
+  return switch (code) {
+    'rom' => '已打开厂商设置',
+    'details' => '已打开应用详情',
+    'settings' => '已打开系统设置',
+    'ok' || 'requested' => '已跳转',
+    'error' => hint.isEmpty ? '没有打开权限页' : hint,
+    _ => '已尝试打开',
+  };
+}
+
+Future<void> openPermissionPage(BuildContext context, String id) async {
+  // 等一帧，避免对话框刚关掉时 HyperOS 把 startActivity 吞掉
+  await Future<void>.delayed(const Duration(milliseconds: 80));
+  if (!context.mounted) return;
+  final r = await NativeBridge.compatOpen(id);
+  if (!context.mounted) return;
+  showGlassSnack(context, _openMessage(r));
+}
+
 /// 打开或关闭分身里的悬浮小窗，并在缺少悬浮窗权限时带去系统页面。
 Future<void> applyToolboxEnabled(BuildContext context, bool on) async {
   context.read<SettingsStore>().set((s) => s.toolboxOverlay = on);
@@ -20,18 +42,110 @@ Future<void> applyToolboxEnabled(BuildContext context, bool on) async {
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('需要悬浮窗权限'),
-      content: const Text('分身运行时，工具箱要显示在其他应用上层。接下来会打开系统的悬浮窗权限页。各厂商的页面不一样，打不开时会回到应用详情。'),
+      content: const Text('分身运行时，工具箱要显示在其他应用上层。接下来会打开系统的悬浮窗权限页。各厂商的页面不一样，打不开时会提示手动路径。'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去开启')),
       ],
     ),
   );
-  if (go == true) await NativeBridge.compatOpen('overlay');
+  if (go == true && context.mounted) await openPermissionPage(context, 'overlay');
 }
 
-class ToolboxScreen extends StatelessWidget {
+/// 一次性引导开启无障碍服务。
+Future<void> maybeShowA11yGuide(BuildContext context) async {
+  final seen = await NativeBridge.a11yGuideSeen();
+  if (seen || !context.mounted) return;
+  final on = await NativeBridge.compatReport();
+  // 粗略：报告里 accessibility 已 ok 就不再提示
+  final items = on?['items'];
+  if (items is List) {
+    for (final raw in items) {
+      if (raw is Map && raw['id'] == 'accessibility' && raw['status'] == 'ok') {
+        await NativeBridge.a11yGuideMark();
+        return;
+      }
+    }
+  }
+  if (!context.mounted) return;
+  final go = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('开启一键填入'),
+      content: const Text(
+        '打开「平行空间」无障碍服务后，点「一键填入」会自动写入当前登录框的账号和密码。\n\n'
+        '我们不会记录按键，也不会保存你在其他应用里输入的内容，只在你点填入时读取当前窗口。\n\n'
+        '部分应用（游戏、银行、使用私有控件或加固的登录页）可能填不进去，这时可以用「复制账号 / 复制密码」后长按粘贴。',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去开启')),
+      ],
+    ),
+  );
+  await NativeBridge.a11yGuideMark();
+  if (go == true && context.mounted) await openPermissionPage(context, 'accessibility');
+}
+
+class ToolboxScreen extends StatefulWidget {
   const ToolboxScreen({super.key});
+
+  @override
+  State<ToolboxScreen> createState() => _ToolboxScreenState();
+}
+
+class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserver {
+  bool? _overlay;
+  bool? _a11y;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshPerms();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowA11yGuide(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onResumed();
+  }
+
+  Future<void> _refreshPerms() async {
+    final o = await NativeBridge.overlayGranted();
+    final report = await NativeBridge.compatReport();
+    var a11y = false;
+    final items = report?['items'];
+    if (items is List) {
+      for (final raw in items) {
+        if (raw is Map && raw['id'] == 'accessibility') {
+          a11y = raw['status'] == 'ok';
+        }
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _overlay = o;
+      _a11y = a11y;
+    });
+  }
+
+  Future<void> _onResumed() async {
+    await _refreshPerms();
+    if (!mounted) return;
+    final settings = context.read<SettingsStore>();
+    if (settings.toolboxOverlay && _overlay == true) {
+      await NativeBridge.setToolboxEnabled(true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +164,7 @@ class ToolboxScreen extends StatelessWidget {
               ]),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 8, 4, 0),
-                child: Text('分身应用在前台时，屏幕上会出现一个可拖动、可收起的小窗。以后还可以往里面加工具，目前第一项是账号密码本。'),
+                child: Text('分身应用在前台时，屏幕上会出现一个可拖动、可收起的小窗。毛玻璃风格，点窗外不挡操作。第一项是账号密码本。'),
               ),
               SectionCard(title: '悬浮小窗', children: [
                 GlassTile(
@@ -59,25 +173,32 @@ class ToolboxScreen extends StatelessWidget {
                   subtitle: '关闭后，打开分身不会再出现小窗',
                   trailing: Switch(
                     value: st.toolboxOverlay,
-                    onChanged: (v) => applyToolboxEnabled(context, v),
+                    onChanged: (v) async {
+                      await applyToolboxEnabled(context, v);
+                      await _refreshPerms();
+                    },
                   ),
                 ),
                 GlassTile(
                   icon: Icons.layers_rounded,
                   title: '悬浮窗权限',
-                  subtitle: '小米、华为、荣耀、OPPO、vivo、三星和 Pixel 会各自跳到对应页面',
+                  subtitle: _overlay == true
+                      ? '已允许'
+                      : '小米、华为、荣耀、OPPO、vivo、三星、魅族和 Pixel 会各自跳到对应页面',
                   onTap: () async {
-                    final r = await NativeBridge.compatOpen('overlay');
-                    if (context.mounted && r == 'error') showGlassSnack(context, '没有打开权限页');
+                    await openPermissionPage(context, 'overlay');
+                    await _refreshPerms();
                   },
                 ),
                 GlassTile(
                   icon: Icons.accessibility_new_rounded,
                   title: '无障碍填入',
-                  subtitle: '开启后，点「填入」会写入当前输入框。没开时改为复制到剪贴板',
+                  subtitle: _a11y == true
+                      ? '已开启，可一键写入登录框'
+                      : '开启后点「填入」写入输入框；未开时改为复制到剪贴板',
                   onTap: () async {
-                    final r = await NativeBridge.compatOpen('accessibility');
-                    if (context.mounted && r == 'error') showGlassSnack(context, '没有打开无障碍设置');
+                    await openPermissionPage(context, 'accessibility');
+                    await _refreshPerms();
                   },
                 ),
               ]),
@@ -85,7 +206,7 @@ class ToolboxScreen extends StatelessWidget {
                 GlassTile(
                   icon: Icons.key_rounded,
                   title: '管理账号密码',
-                  subtitle: '按分身或包名分组，一点即可填入或复制',
+                  subtitle: '按分身或包名分组；一键填入，或分别复制账号 / 密码',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VaultScreen())),
                 ),
               ]),
