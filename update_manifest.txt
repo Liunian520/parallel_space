@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.16",
-  "versionCode": 14316,
-  "apkUrl": "https://link.liunianai.cn/f/disk/hzxnybnpudalh6td1vigojpgxs/parallel_space_v1.3.16_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/99td5r",
-  "sha256": "ef6b78dd12390ebfb7b7bacb90fc055885ea957fe03d2f0bb224ed0a9bc8161a",
-  "size": 21264539,
-  "notes": "1.3.16：同一应用可「再分身一个」，每个分身数据独立；分身可改名，桌面快捷方式、最近任务（不再显示[B0]）、工具箱同步显示；无障碍未开时一键直达开关页，Android 13+ 侧载会引导「允许受限制的设置」。",
-  "publishedAt": "2026-10-28T10:14:31+08:00"
+  "versionName": "1.3.17",
+  "versionCode": 14317,
+  "apkUrl": "https://link.liunianai.cn/f/disk/xf8kywurdar1oyrixxislepmb4/parallel_space_v1.3.17_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/cxcsra",
+  "sha256": "2a3d898317cd7ef8afd21d9dac0770272ec733db8d62327f252688585f688c47",
+  "size": 21264543,
+  "notes": "1.3.17：修复一键填入叠字（先清空再写入、精确校验、1秒防抖）；添加分身页对已有分身的应用可再开一个。",
+  "publishedAt": "2026-10-28T11:04:42+08:00"
 }
