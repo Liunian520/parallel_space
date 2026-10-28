@@ -139,10 +139,23 @@ class FakeNative {
       case 'cloneVirtual':
         if (!virtualAvailable) return {'r': 'engine_unavailable'};
         final pkg = a['pkg'] as String;
-        if (!work.any((e) => e['pkg'] == pkg)) {
-          work.add(personal.firstWhere((e) => e['pkg'] == pkg, orElse: () => app(pkg, pkg)));
+        final want = a['userId'];
+        final wantId = want is int ? want : (want is num ? want.toInt() : 0);
+        int target;
+        if (wantId < 0) {
+          var id = 0;
+          while (work.any((e) => e['pkg'] == pkg && (e['userId'] ?? 0) == id)) {
+            id++;
+          }
+          target = id;
+        } else {
+          target = wantId;
         }
-        return {'r': cloneResult == 'ok' ? 'ok' : cloneResult};
+        if (!work.any((e) => e['pkg'] == pkg && (e['userId'] ?? 0) == target)) {
+          final base = personal.firstWhere((e) => e['pkg'] == pkg, orElse: () => app(pkg, pkg));
+          work.add({...base, 'userId': target, 'inWork': true});
+        }
+        return {'r': cloneResult == 'ok' ? 'ok' : cloneResult, 'userId': target};
       case 'launchVirtual':
         if (!virtualAvailable) return {'r': 'engine_unavailable'};
         final pkg = a['pkg'] as String?;
@@ -150,7 +163,9 @@ class FakeNative {
         return {'r': 'ok'};
       case 'deleteVirtual':
         if (!virtualAvailable) return {'r': 'engine_unavailable'};
-        work.removeWhere((e) => e['pkg'] == a['pkg']);
+        final delUid = a['userId'];
+        final delId = delUid is int ? delUid : (delUid is num ? delUid.toInt() : 0);
+        work.removeWhere((e) => e['pkg'] == a['pkg'] && (e['userId'] ?? 0) == delId);
         return {'r': 'ok'};
       case 'isInsideWorkProfile':
         return false;

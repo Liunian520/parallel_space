@@ -246,6 +246,32 @@ void main() {
     expect(store.byPackage('com.taobao.taobao'), isNotNull);
   });
 
+  
+  testWidgets('添加分身：虚拟引擎下已有分身仍可选并再开一个', (t) async {
+    setScreen(t, const Size(390, 844));
+    final native = standardNative();
+    native.install(t);
+    FakeNative.virtualAvailable = true;
+    final prefs = await freshPrefs(seededClonePrefs());
+    await pumpApp(t, prefs);
+    await t.tap(find.text('添加分身'));
+    await settle(t, 20);
+    expect(find.textContaining('已有'), findsWidgets);
+    expect(find.byIcon(Icons.library_add_rounded), findsWidgets);
+    // 微信已有分身：点按 → 确认 → 再开
+    await t.tap(find.text('微信'));
+    await settle(t, 15);
+    expect(find.text('再开一个分身？'), findsOneWidget);
+    await t.tap(find.text('再开一个'));
+    await settle(t, 40);
+    expect(native.methods, contains('cloneVirtual'));
+    final call = native.calls.lastWhere((c) => c.method == 'cloneVirtual');
+    expect((call.arguments as Map)['userId'], -1);
+    expect(find.byType(AddCloneScreen), findsNothing);
+    final store = t.element(find.byType(CloneCard).first).read<CloneStore>();
+    expect(store.instancesOf('com.tencent.mm').length, greaterThanOrEqualTo(2));
+  });
+
   testWidgets('添加到桌面：HyperOS 权限被拒 → 引导并打开权限页；请求成功 → 回执确认', (t) async {
     setScreen(t, const Size(390, 844));
     final native = standardNative()..pinResult = 'perm_denied';

@@ -75,22 +75,66 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
     return rows;
   }
 
-  bool _added(CloneStore store, AppInfo a) => a.inWork || store.byPackage(a.packageName) != null;
+  /// 该应用已有几个分身（虚拟引擎多开）；工作资料路径最多 1 个。
+  int _count(CloneStore store, AppInfo a) {
+    final n = store.instancesOf(a.packageName).length;
+    if (n > 0) return n;
+    return a.inWork ? 1 : 0;
+  }
 
-  Future<void> _clone(AppInfo a) async {
+  Future<void> _onPick(AppInfo a) async {
     final store = context.read<CloneStore>();
-    setState(() => _cloning.add(a.packageName));
-    final r = await cloneAppIntoWork(a.packageName);
-    if (!mounted) return;
-    setState(() => _cloning.remove(a.packageName));
-    if (r != 'ok') {
-      await _showCloneError(a, r);
+    final count = _count(store, a);
+    final multi = store.engineAvailable;
+    // 工作资料模式：仍只能有一个，已有则不可再加
+    if (!multi && count > 0) {
+      showGlassSnack(context, '「${a.name}」已在工作资料中，每个应用只能有一份');
       return;
     }
-    store.addFromApp(a);
+    if (count >= 1 && multi) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('再开一个分身？'),
+          content: Text(
+            '「${a.name}」已有 $count 个分身。再开一个会使用独立的数据和账号，默认名为「${a.name} 分身${count + 1}」。',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('再开一个')),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+      await _clone(a, another: true);
+      return;
+    }
+    _showSheet(a);
+  }
+
+  Future<void> _clone(AppInfo a, {bool another = false}) async {
+    final store = context.read<CloneStore>();
+    setState(() => _cloning.add(a.packageName));
+    final result = await cloneAppIntoWorkEx(a.packageName, userId: another ? -1 : 0);
+    if (!mounted) return;
+    setState(() => _cloning.remove(a.packageName));
+    if (!result.ok) {
+      await _showCloneError(a, result.code);
+      return;
+    }
+    store.addFromApp(AppInfo(
+      packageName: a.packageName,
+      name: a.name,
+      version: a.version,
+      category: a.category,
+      system: a.system,
+      userId: result.userId,
+    ));
     await store.refresh();
     if (!mounted) return;
-    showGlassSnack(context, '已创建分身「${a.name}」');
+    final created = store.byInstance(a.packageName, result.userId);
+    final label = created?.customName ?? a.name;
+    showGlassSnack(context, another ? '已再开「$label」' : '已创建分身「$label」');
     Navigator.of(context).pop();
   }
 
@@ -108,13 +152,19 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
   }
 
   void _showSheet(AppInfo app) {
+    final store = context.read<CloneStore>();
+    final count = _count(store, app);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => _AppSheet(app: app, onClone: () {
-        Navigator.pop(ctx);
-        _clone(app);
-      }),
+      builder: (ctx) => _AppSheet(
+        app: app,
+        existingCount: count,
+        onClone: () {
+          Navigator.pop(ctx);
+          _clone(app, another: count >= 1);
+        },
+      ),
     );
   }
 
@@ -158,7 +208,7 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
                 padding: const EdgeInsets.fromLTRB(28, 8, 28, 8),
                 child: Text(
                     context.watch<CloneStore>().engineAvailable
-                        ? '选择个人空间中已安装的应用，在平行空间里再开一份，账号和数据与原应用分开'
+                        ? '选择个人空间中已安装的应用。已有分身的应用仍可选，点按即可再开一个（数据独立）'
                         : '选择个人空间中已安装的应用，复制到工作资料后即可登录另一个账号',
                     style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant)),
               ),
@@ -183,7 +233,7 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
                         padding: const EdgeInsets.fromLTRB(12, 18, 12, 8),
                         child: Text(title, style: tt.labelLarge?.copyWith(color: s.primary, letterSpacing: 1)),
                       ),
-                    _AppRow(:final app) => _tile(app, _added(store, app)),
+                    _AppRow(:final app) => _tile(app, _count(store, app), store.engineAvailable),
                   },
                 ),
               ),
@@ -193,10 +243,15 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
     );
   }
 
-  Widget _tile(AppInfo a, bool added) {
+  Widget _tile(AppInfo a, int count, bool multi) {
     final tt = Theme.of(context).textTheme;
     final s = Theme.of(context).colorScheme;
     final cloning = _cloning.contains(a.packageName);
+    // 工作资料：已有则不可点；虚拟引擎：始终可点（再开一个）
+    final locked = !multi && count > 0;
+    final subtitle = count > 0
+        ? (multi ? '已有 $count 个分身 · 点按可再开一个' : '已添加')
+        : (a.version.isEmpty ? a.packageName : '版本 ${a.version}');
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Glass(
@@ -204,7 +259,7 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
         child: Pressable(
           radius: 22,
           scale: 0.98,
-          onTap: added || cloning ? null : () => _showSheet(a),
+          onTap: locked || cloning ? null : () => _onPick(a),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
@@ -213,13 +268,18 @@ class _AddCloneScreenState extends State<AddCloneScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.titleMedium),
-                  Text(a.version.isEmpty ? a.packageName : '版本 ${a.version}',
+                  Text(subtitle,
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant)),
                 ]),
               ),
               if (cloning)
                 const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-              else if (added)
+              else if (count > 0 && multi)
+                Tooltip(
+                  message: '再开一个分身',
+                  child: Icon(Icons.library_add_rounded, color: s.primary),
+                )
+              else if (count > 0)
                 Tooltip(message: '已添加', child: Icon(Icons.check_circle_rounded, color: s.primary))
               else
                 Icon(Icons.add_circle_outline_rounded, color: s.primary),
@@ -270,9 +330,10 @@ class _SearchHeader extends SliverPersistentHeaderDelegate {
 }
 
 class _AppSheet extends StatelessWidget {
-  const _AppSheet({required this.app, required this.onClone});
+  const _AppSheet({required this.app, required this.onClone, this.existingCount = 0});
   final AppInfo app;
   final VoidCallback onClone;
+  final int existingCount;
 
   @override
   Widget build(BuildContext context) {
@@ -304,9 +365,11 @@ class _AppSheet extends StatelessWidget {
         ]),
         const SizedBox(height: 16),
         Text(
-            context.watch<CloneStore>().engineAvailable
-                ? '在平行空间内安装同一份应用（不重新下载），使用原应用图标。分身与原应用的账号和数据完全隔离。'
-                : '将在工作资料中安装同一份应用（不重新下载），带公文包角标。分身与原应用的账号和数据完全隔离。',
+            existingCount > 0
+                ? '已有 $existingCount 个分身。再开一个会使用独立数据，默认名为「${app.name} 分身${existingCount + 1}」。'
+                : context.watch<CloneStore>().engineAvailable
+                    ? '在平行空间内安装同一份应用（不重新下载），使用原应用图标。分身与原应用的账号和数据完全隔离。'
+                    : '将在工作资料中安装同一份应用（不重新下载），带公文包角标。分身与原应用的账号和数据完全隔离。',
             textAlign: TextAlign.center, style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant, height: 1.5)),
         const SizedBox(height: 20),
         SizedBox(
@@ -317,8 +380,9 @@ class _AppSheet extends StatelessWidget {
             child: Ink(
               padding: const EdgeInsets.symmetric(vertical: 18),
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), gradient: AppTheme.brandGradient(s)),
-              child: const Center(
-                child: Text('创建分身', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Center(
+                child: Text(existingCount > 0 ? '再开一个分身' : '创建分身',
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ),
           ),

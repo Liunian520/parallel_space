@@ -297,16 +297,29 @@ Future<CloneApp?> cloneAnotherInstance(BuildContext context, CloneApp base) asyn
   return c;
 }
 
+/// 创建分身结果：状态码 + 虚拟用户 id（工作资料路径恒为 0）。
+class CloneResult {
+  const CloneResult(this.code, {this.userId = 0});
+  final String code;
+  final int userId;
+  bool get ok => code == 'ok';
+}
+
 /// 创建分身：优先虚拟引擎；引擎不可用时回退工作资料 installExisting。
-Future<String> cloneAppIntoWork(String pkg) async {
+/// [userId] < 0 表示新开一个实例（与「再分身一个」相同）。
+Future<String> cloneAppIntoWork(String pkg, {int userId = 0}) async =>
+    (await cloneAppIntoWorkEx(pkg, userId: userId)).code;
+
+Future<CloneResult> cloneAppIntoWorkEx(String pkg, {int userId = 0}) async {
   final vs = await NativeBridge.virtualStatus();
   if (vs['available'] == true) {
-    final m = await NativeBridge.cloneVirtual(pkg);
+    final m = await NativeBridge.cloneVirtual(pkg, userId: userId);
     final r = m['r'] as String? ?? 'error';
-    if (r == 'ok') return 'ok';
-    return r;
+    final u = m['userId'];
+    return CloneResult(r, userId: u is num ? u.toInt() : (userId < 0 ? 0 : userId));
   }
-  return NativeBridge.cloneIntoWork(pkg);
+  final r = await NativeBridge.cloneIntoWork(pkg);
+  return CloneResult(r);
 }
 
 String cloneErrorText(String r) => switch (r) {

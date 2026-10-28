@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 只在用户点「填入」时，把用户名和密码写入当前窗口的登录表单。
  * 不记录按键，也不持久化窗口内容。
  *
- * 覆盖：普通 EditText、密码框、WebView 内节点；SET_TEXT 失败时退到焦点 + 粘贴。
+ * 覆盖：普通 EditText、密码框、WebView 内节点；先清空再 SET_TEXT，失败才全选+粘贴；1s 防抖。
  * 虚拟引擎分身跑在宿主进程里，无障碍同样能看到其窗口。
  *
  * 1.3.9：树遍历限深/限节点、异常全吞并写日志；fill 可在后台线程调用，
@@ -173,8 +173,21 @@ class ToolboxAccessibilityService : AccessibilityService() {
         private val fillExecutor = Executors.newSingleThreadExecutor { r ->
             Thread(r, "toolbox-a11y-fill").apply { isDaemon = true }
         }
-        /** 若当前在主线程，把填入挪到后台，避免 sleep / 深树遍历 ANR。 */
+        @Volatile private var lastFillAt = 0L
+        private const val FILL_DEBOUNCE_MS = 1000L
+
+        /**
+         * 若当前在主线程，把填入挪到后台，避免 sleep / 深树遍历 ANR。
+         * 1 秒内重复调用直接丢弃，防止双击 / 面板重建触发两次叠字。
+         */
         fun fillOffMain(svc: ToolboxAccessibilityService, username: String, password: String): Boolean {
+            val now = SystemClock.elapsedRealtime()
+            val prev = lastFillAt
+            if (now - prev < FILL_DEBOUNCE_MS) {
+                ToolboxCrashLog.append(svc, "INFO", "fill debounce skip gap=${now - prev}ms")
+                return true // 当作成功，避免上层再走「复制」退路把剪贴板搞乱
+            }
+            lastFillAt = now
             if (Looper.myLooper() != Looper.getMainLooper()) {
                 return svc.fill(username, password)
             }
@@ -239,25 +252,39 @@ private fun fillRoot(
     }
     val focused = edits.firstOrNull { try { it.isFocused } catch (_: Throwable) { false } }
 
+    val written = HashSet<String>()
+    fun writeOnce(n: AccessibilityNodeInfo?, value: String): Boolean {
+        if (n == null || value.isEmpty()) return false
+        val key = nodeKey(n)
+        if (!written.add(key)) {
+            ToolboxCrashLog.append(svc, "INFO", "write skip duplicate-node key=$key")
+            return false
+        }
+        return writeText(n, value, svc)
+    }
     var ok = false
     try {
+        ToolboxCrashLog.append(
+            svc, "INFO",
+            "fillRoot edits=${edits.size} user=${userNode?.let(::fieldLabel)} pass=${passwordNode?.let(::fieldLabel)} focused=${focused?.let(::fieldLabel)}",
+        )
         when {
             passwordNode != null && userNode != null && username.isNotEmpty() && password.isNotEmpty() -> {
-                val u = writeText(userNode, username, svc)
-                val p = writeText(passwordNode, password, svc)
+                val u = writeOnce(userNode, username)
+                val p = writeOnce(passwordNode, password)
                 ok = u || p
             }
             focused != null && looksLikePassword(focused) && password.isNotEmpty() -> {
-                ok = writeText(focused, password, svc)
-                if (username.isNotEmpty() && userNode != null) ok = writeText(userNode, username, svc) || ok
+                ok = writeOnce(focused, password)
+                if (username.isNotEmpty()) ok = writeOnce(userNode, username) || ok
             }
             focused != null && try { focused.isEditable } catch (_: Throwable) { false } -> {
-                if (username.isNotEmpty() && !looksLikePassword(focused)) ok = writeText(focused, username, svc)
-                if (password.isNotEmpty() && passwordNode != null) ok = writeText(passwordNode, password, svc) || ok
-                else if (password.isNotEmpty() && looksLikePassword(focused)) ok = writeText(focused, password, svc) || ok
+                if (username.isNotEmpty() && !looksLikePassword(focused)) ok = writeOnce(focused, username)
+                if (password.isNotEmpty() && passwordNode != null) ok = writeOnce(passwordNode, password) || ok
+                else if (password.isNotEmpty() && looksLikePassword(focused)) ok = writeOnce(focused, password) || ok
             }
-            passwordNode != null && password.isNotEmpty() -> ok = writeText(passwordNode, password, svc)
-            userNode != null && username.isNotEmpty() -> ok = writeText(userNode, username, svc)
+            passwordNode != null && password.isNotEmpty() -> ok = writeOnce(passwordNode, password)
+            userNode != null && username.isNotEmpty() -> ok = writeOnce(userNode, username)
         }
     } finally {
         for (n in edits) {
@@ -357,11 +384,28 @@ private fun looksLikePassword(n: AccessibilityNodeInfo): Boolean {
 }
 
 /**
- * 先 ACTION_SET_TEXT；失败则焦点 + 剪贴板 + ACTION_PASTE；最后校验文本是否落地。
+ * 写入策略（针对 HyperOS / 部分 App 的「SET_TEXT 追加」与「node.text 未刷新」）：
+ * 1. 已是目标值 → 跳过（避免二次写入叠字）
+ * 2. 先清空（SET_TEXT ""），再 SET_TEXT 完整值一次
+ * 3. 刷新节点后做**精确**相等校验（禁止 endsWith 宽松匹配，那会把叠字当成成功）
+ * 4. SET_TEXT 失败才：焦点 → 全选 → 粘贴一次
  * 禁止在主线程 sleep。
  */
 private fun writeText(node: AccessibilityNodeInfo, text: String, svc: ToolboxAccessibilityService): Boolean {
     if (text.isEmpty()) return false
+    val hint = fieldLabel(node)
+    val before = currentText(node)
+    val beforeLen = before.length
+    ToolboxCrashLog.append(
+        svc, "INFO",
+        "write begin hint=$hint cls=${safeClass(node)} beforeLen=$beforeLen wantLen=${text.length} pwd=${safeIsPassword(node)}",
+    )
+    // 已正确：不要再写，否则 HyperOS 上 SET_TEXT 会追加成两份
+    if (!safeIsPassword(node) && before == text) {
+        ToolboxCrashLog.append(svc, "INFO", "write skip already-correct hint=$hint")
+        return true
+    }
+
     try {
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -369,42 +413,142 @@ private fun writeText(node: AccessibilityNodeInfo, text: String, svc: ToolboxAcc
     }
     pauseBriefly()
 
-    val setOk = try {
+    // 先清空，避免 SET_TEXT 在部分 ROM 上变成 append
+    clearField(node)
+    pauseBriefly()
+
+    val setOk = setTextAction(node, text)
+    pauseBriefly()
+    refresh(node)
+    val afterSet = currentText(node)
+    ToolboxCrashLog.append(
+        svc, "INFO",
+        "write SET_TEXT ok=$setOk afterLen=${afterSet.length} exact=${afterSet == text} hint=$hint",
+    )
+    if (exactOrPasswordOk(node, text, afterSet)) {
+        ToolboxCrashLog.append(svc, "INFO", "write done method=SET_TEXT hint=$hint afterLen=${afterSet.length}")
+        return true
+    }
+
+    // SET_TEXT 未精确落地：全选后粘贴一次（禁止不清空就粘贴）
+    val pasted = pasteOnce(node, text, svc)
+    pauseBriefly()
+    refresh(node)
+    val afterPaste = currentText(node)
+    ToolboxCrashLog.append(
+        svc, "INFO",
+        "write PASTE ok=$pasted afterLen=${afterPaste.length} exact=${afterPaste == text} hint=$hint",
+    )
+    if (exactOrPasswordOk(node, text, afterPaste)) {
+        ToolboxCrashLog.append(svc, "INFO", "write done method=PASTE hint=$hint afterLen=${afterPaste.length}")
+        return true
+    }
+
+    // 密码框往往读不到 text；SET_TEXT 或 PASTE 任一返回 true 就算成功，但我们已经先清空，不会叠字
+    if (safeIsPassword(node) && (setOk || pasted)) {
+        ToolboxCrashLog.append(svc, "INFO", "write done method=password-trust set=$setOk paste=$pasted hint=$hint")
+        return true
+    }
+    ToolboxCrashLog.append(svc, "WARN", "write failed hint=$hint beforeLen=$beforeLen afterLen=${afterPaste.length}")
+    return false
+}
+
+private fun setTextAction(node: AccessibilityNodeInfo, text: String): Boolean = try {
+    val args = Bundle()
+    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+} catch (_: Throwable) {
+    false
+}
+
+private fun clearField(node: AccessibilityNodeInfo) {
+    try {
+        setTextAction(node, "")
+    } catch (_: Throwable) {
+    }
+    try {
+        val len = currentText(node).length
+        if (len > 0) {
+            val args = Bundle()
+            args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+            args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, len)
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
+            setTextAction(node, "")
+        }
+    } catch (_: Throwable) {
+    }
+}
+
+private fun pasteOnce(node: AccessibilityNodeInfo, text: String, svc: ToolboxAccessibilityService): Boolean = try {
+    // 再清一次 + 全选，确保粘贴是替换而不是追加
+    clearField(node)
+    pauseBriefly()
+    val cm = svc.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
+    node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+    pauseBriefly()
+    val len = currentText(node).length
+    if (len > 0) {
         val args = Bundle()
-        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-    } catch (_: Throwable) {
-        false
+        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+        args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, len.coerceAtLeast(1))
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
     }
-    if (setOk && textLanded(node, text)) return true
+    node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+} catch (_: Throwable) {
+    false
+}
 
-    val pasted = try {
-        val cm = svc.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
-        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        pauseBriefly()
-        node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+private fun exactOrPasswordOk(node: AccessibilityNodeInfo, expected: String, cur: String): Boolean {
+    if (safeIsPassword(node)) return false // 密码交给调用方用 setOk/pasted 判断，这里不做「宽松成功」
+    return cur == expected
+}
+
+private fun currentText(node: AccessibilityNodeInfo): String = try {
+    node.text?.toString().orEmpty()
+} catch (_: Throwable) {
+    ""
+}
+
+private fun safeIsPassword(node: AccessibilityNodeInfo): Boolean = try {
+    node.isPassword
+} catch (_: Throwable) {
+    false
+}
+
+private fun safeClass(node: AccessibilityNodeInfo): String = try {
+    node.className?.toString().orEmpty().substringAfterLast('.')
+} catch (_: Throwable) {
+    "?"
+}
+
+private fun fieldLabel(node: AccessibilityNodeInfo): String = try {
+    val id = node.viewIdResourceName?.substringAfterLast('/') ?: ""
+    val hint = if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString().orEmpty() else ""
+    val desc = node.contentDescription?.toString().orEmpty()
+    listOf(id, hint, desc).firstOrNull { it.isNotBlank() } ?: safeClass(node)
+} catch (_: Throwable) {
+    "?"
+}
+
+private fun refresh(node: AccessibilityNodeInfo) {
+    try {
+        node.refresh()
     } catch (_: Throwable) {
-        false
     }
-    if (pasted && textLanded(node, text)) return true
-
-    if (try { node.isPassword } catch (_: Throwable) { false } && (setOk || pasted)) return true
-    return setOk || pasted
 }
 
 private fun pauseBriefly() {
     if (Looper.myLooper() == Looper.getMainLooper()) return
     try {
-        SystemClock.sleep(40)
+        SystemClock.sleep(50)
     } catch (_: Throwable) {
     }
 }
 
-private fun textLanded(node: AccessibilityNodeInfo, expected: String): Boolean = try {
-    if (node.isPassword) return true
-    val cur = node.text?.toString().orEmpty()
-    cur == expected || cur.endsWith(expected) || (expected.endsWith(cur) && cur.isNotEmpty())
+/** 节点身份：同一填入过程中同一字段只写一次。 */
+private fun nodeKey(n: AccessibilityNodeInfo): String = try {
+    "${n.windowId}|${n.viewIdResourceName}|${n.className}|${n.hashCode()}"
 } catch (_: Throwable) {
-    false
+    n.hashCode().toString()
 }

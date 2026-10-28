@@ -1302,7 +1302,16 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    @Volatile private var lastPerformFillAt = 0L
+
     private fun performFill(e: VaultStore.Entry) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPerformFillAt < 1000L) {
+            ToolboxCrashLog.append(this, "INFO", "tap fill debounce id=${e.id} gap=${now - lastPerformFillAt}ms")
+            toast("正在填入，请稍候")
+            return
+        }
+        lastPerformFillAt = now
         ToolboxCrashLog.append(this, "INFO", "tap fill id=${e.id} userLen=${e.username.length} passLen=${e.password.length}")
         // 先收起面板，避免无障碍读到悬浮窗；再填入。
         if (expanded) collapse()

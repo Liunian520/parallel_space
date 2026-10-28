@@ -89,4 +89,17 @@ void main() {
     expect(vaultEntryMatchesInstance(second, 'w:com.x#1'), isTrue);
     expect(vaultEntryMatchesInstance(second, 'w:com.x'), isFalse);
   });
+
+  test('添加分身逻辑：已有分身再 addFromApp 得到分身2', () async {
+    SharedPreferences.setMockInitialValues({
+      'clones.v1': jsonEncode([
+        {'uid': 'w:com.x', 'pkg': 'com.x', 'kind': 'work', 'appName': '小雅', 'ua': true},
+      ]),
+    });
+    final store = CloneStore(await SharedPreferences.getInstance());
+    expect(store.instancesOf('com.x').length, 1);
+    store.addFromApp(const AppInfo(packageName: 'com.x', name: '小雅', userId: 1));
+    expect(store.instancesOf('com.x').map((c) => c.userId).toList(), [0, 1]);
+    expect(store.byInstance('com.x', 1)!.customName, '小雅 分身2');
+  });
 }
