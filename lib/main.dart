@@ -100,6 +100,9 @@ Widget buildProviders(SharedPreferences prefs, {required Widget child}) => Multi
         final store = context.read<CloneStore>();
         // 分身变化后同步桌面小组件
         store.onPersisted ??= () => NativeBridge.updateWidget(store.widgetItems());
+        // 分身名 → 原生（桌面快捷方式名、最近任务名）
+        store.onNames ??= (items) => NativeBridge.syncCloneNames(items);
+        NativeBridge.syncCloneNames(store.nameItems());
         return child;
       }),
     );

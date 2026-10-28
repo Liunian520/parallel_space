@@ -636,8 +636,10 @@ object OemAdapter {
         val r = when (id) {
             "overlay" -> launchFirstDetailed(act, overlayIntents(act), "overlay")
             "accessibility" -> {
-                ToolboxController.armAccessibility(act)
-                launchFirstDetailed(act, accessibilityIntents(act), "accessibility")
+                when (val c = A11yJump.open(act, forceServicePage = true)) {
+                    "error" -> OpenResult("error", manualHint("accessibility"))
+                    else -> OpenResult(if (c == "details") "rom" else c)
+                }
             }
             "notification" -> launchFirstDetailed(act, notificationIntents(act), "notification")
             "battery" -> {
@@ -901,7 +903,10 @@ object OemAdapter {
         return oem + standardPkg + standardBare
     }
 
-    fun accessibilityIntents(ctx: Context): List<Intent> {
+    /** 1.3.16 起由 [A11yJump.intents] 负责；保留供链路展示。 */
+    fun accessibilityIntents(ctx: Context): List<Intent> = A11yJump.intents(ctx)
+
+    private fun legacyAccessibilityIntents(ctx: Context): List<Intent> {
         val component = ComponentName(ctx, ToolboxAccessibilityService::class.java)
         val detail = if (Build.VERSION.SDK_INT >= 33) {
             listOf(

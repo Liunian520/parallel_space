@@ -29,6 +29,7 @@ class AppInfo {
     this.system = false,
     this.suspended = false,
     this.inWork = false,
+    this.userId = 0,
   });
 
   final String packageName;
@@ -43,6 +44,9 @@ class AppInfo {
   /// 个人空间应用：是否已存在于平行空间的工作资料中。
   final bool inWork;
 
+  /// 虚拟引擎用户 id：同一应用的第 N 个分身（0 = 第一个）。
+  final int userId;
+
   static AppInfo? fromMap(Object? e) {
     if (e is! Map || e['pkg'] is! String || (e['pkg'] as String).isEmpty) return null;
     final pkg = e['pkg'] as String;
@@ -55,6 +59,7 @@ class AppInfo {
       system: e['system'] == true,
       suspended: e['suspended'] == true,
       inWork: e['inWork'] == true,
+      userId: e['userId'] is num ? (e['userId'] as num).toInt().clamp(0, 999) : 0,
     );
   }
 

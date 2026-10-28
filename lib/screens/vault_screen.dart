@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/clone_app.dart';
 import '../services/clone_actions.dart';
+import '../services/a11y_jump.dart';
 import '../services/native_bridge.dart';
 import '../services/vault_group.dart';
 import '../state/clone_store.dart';
@@ -49,7 +50,9 @@ class _VaultScreenState extends State<VaultScreen> {
   Future<void> _boot() async {
     _currentPkg = widget.initialPackage.isNotEmpty
         ? widget.initialPackage
-        : (await NativeBridge.toolboxCurrentPackage() ?? '');
+        : ((await NativeBridge.toolboxCurrentUid()) ?? '').isNotEmpty
+            ? (await NativeBridge.toolboxCurrentUid())!
+            : (await NativeBridge.toolboxCurrentPackage() ?? '');
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
@@ -82,7 +85,7 @@ class _VaultScreenState extends State<VaultScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _VaultEditorSheet(
         existing: existing,
-        initialPackage: existing?.packageName ??
+        initialPackage: existing?.cloneUid ??
             (widget.initialPackage.isNotEmpty ? widget.initialPackage : _currentPkg),
       ),
     );
@@ -162,6 +165,10 @@ class _VaultScreenState extends State<VaultScreen> {
                   '在这里管理账号和密码。分身里的工具箱只能查看、一键填入和复制，不再负责添加。',
                   style: tt.bodyMedium?.copyWith(color: s.onSurfaceVariant),
                 ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: A11yStatusBanner(),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -368,9 +375,14 @@ class _VaultEditorSheetState extends State<_VaultEditorSheet> {
   late final _user = TextEditingController(text: widget.existing?.username ?? '');
   late final _pass = TextEditingController(text: widget.existing?.password ?? '');
   late final _note = TextEditingController(text: widget.existing?.note ?? '');
-  late String _pkg = widget.existing?.packageName ?? widget.initialPackage;
-  late String _cloneUid = widget.existing?.cloneUid ??
-      (_pkg.isEmpty ? '' : CloneApp.uidFor(_pkg));
+  // initialPackage 可能是包名，也可能是实例 id（w:包名#N）
+  late String _pkg = widget.existing?.packageName ??
+      (widget.initialPackage.startsWith('w:') ? CloneApp.pkgOf(widget.initialPackage) : widget.initialPackage);
+  late String _cloneUid = (widget.existing?.cloneUid.isNotEmpty ?? false)
+      ? widget.existing!.cloneUid
+      : widget.initialPackage.startsWith('w:')
+          ? widget.initialPackage
+          : (_pkg.isEmpty ? '' : CloneApp.uidFor(_pkg));
   var _obscure = true;
   var _busy = false;
 
@@ -456,28 +468,29 @@ class _VaultEditorSheetState extends State<_VaultEditorSheet> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    value: clones.any((c) => c.packageName == _pkg)
-                        ? _pkg
-                        : (_pkg.isEmpty ? null : _pkg),
+                    value: clones.any((c) => c.uid == _cloneUid)
+                        ? _cloneUid
+                        : (_pkg.isEmpty ? null : '?$_pkg'),
                     hint: const Text('选择分身'),
                     items: [
                       for (final c in clones)
                         DropdownMenuItem(
-                          value: c.packageName,
+                          value: c.uid,
                           child: Row(children: [
                             AppIcon(packageName: c.packageName, label: c.customName, size: 28),
                             const SizedBox(width: 10),
                             Expanded(child: Text(c.customName, overflow: TextOverflow.ellipsis)),
                           ]),
                         ),
-                      if (_pkg.isNotEmpty && clones.every((c) => c.packageName != _pkg))
-                        DropdownMenuItem(value: _pkg, child: Text(_pkg)),
+                      if (_pkg.isNotEmpty && clones.every((c) => c.uid != _cloneUid))
+                        DropdownMenuItem(value: '?$_pkg', child: Text(_pkg)),
                     ],
                     onChanged: (v) {
                       if (v == null) return;
+                      if (v.startsWith('?')) return;
                       setState(() {
-                        _pkg = v;
-                        _cloneUid = CloneApp.uidFor(v);
+                        _cloneUid = v;
+                        _pkg = CloneApp.pkgOf(v);
                       });
                     },
                   ),

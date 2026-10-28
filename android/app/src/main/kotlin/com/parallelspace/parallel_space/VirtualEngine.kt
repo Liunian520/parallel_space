@@ -103,68 +103,111 @@ object VirtualEngine {
         "userId" to USER,
     )
 
-    fun listCloned(): List<Map<String, Any>> {
-        if (!ready) return emptyList()
-        return try {
-            BlackBoxCore.get().getInstalledPackages(0, USER).mapNotNull { pi ->
-                val pkg = pi.packageName ?: return@mapNotNull null
-                if (pkg == BlackBoxCore.getHostPkg()) return@mapNotNull null
-                val label = try {
-                    pi.applicationInfo?.loadLabel(BlackBoxCore.getPackageManager())?.toString() ?: pkg
-                } catch (_: Exception) {
-                    pkg
-                }
-                val ver = pi.versionName ?: ""
-                val system = (pi.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM != 0
-                mapOf(
-                    "pkg" to pkg,
-                    "label" to label,
-                    "ver" to ver,
-                    "cat" to "other",
-                    "system" to system,
-                    "suspended" to false,
-                    "inWork" to true,
-                )
-            }
+    /** 已有的 BlackBox 用户 id（含 0）。每个 userId 是一份独立数据空间。 */
+    fun userIds(): List<Int> = try {
+        (listOf(USER) + BlackBoxCore.get().getUsers().mapNotNull { u -> userIdOf(u) }).distinct().sorted()
+    } catch (_: Throwable) {
+        listOf(USER)
+    }
+
+    private fun userIdOf(u: Any?): Int? = try {
+        u?.javaClass?.getField("id")?.getInt(u)
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun ensureUser(userId: Int) {
+        if (userId == USER) return
+        if (userIds().contains(userId)) return
+        try {
+            BlackBoxCore.get().createUser(userId)
         } catch (t: Throwable) {
-            Log.e(TAG, "listCloned", t)
-            emptyList()
+            Log.w(TAG, "createUser $userId", t)
         }
     }
 
-    fun isCloned(pkg: String): Boolean = try {
-        ready && BlackBoxCore.get().isInstalled(pkg, USER)
+    /** 每个 (包名, userId) 是一个分身实例。 */
+    fun listCloned(): List<Map<String, Any>> {
+        if (!ready) return emptyList()
+        val out = ArrayList<Map<String, Any>>()
+        for (uid in userIds()) {
+            try {
+                for (pi in BlackBoxCore.get().getInstalledPackages(0, uid)) {
+                    val pkg = pi.packageName ?: continue
+                    if (pkg == BlackBoxCore.getHostPkg()) continue
+                    val label = try {
+                        pi.applicationInfo?.loadLabel(BlackBoxCore.getPackageManager())?.toString() ?: pkg
+                    } catch (_: Exception) {
+                        pkg
+                    }
+                    val system = (pi.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM != 0
+                    out += mapOf(
+                        "pkg" to pkg,
+                        "label" to label,
+                        "ver" to (pi.versionName ?: ""),
+                        "cat" to "other",
+                        "system" to system,
+                        "suspended" to false,
+                        "inWork" to true,
+                        "userId" to uid,
+                    )
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "listCloned user=$uid", t)
+            }
+        }
+        return out
+    }
+
+    fun isCloned(pkg: String, userId: Int = USER): Boolean = try {
+        ready && BlackBoxCore.get().isInstalled(pkg, userId)
     } catch (_: Throwable) {
         false
     }
 
-    fun clone(pkg: String): Map<String, Any?> {
+    /** 下一个没装这个包的 userId（用于「再分身一个」）。 */
+    fun nextFreeUser(pkg: String): Int {
+        var id = USER
+        while (id < 64) {
+            if (!isCloned(pkg, id)) return id
+            id++
+        }
+        return id
+    }
+
+    /**
+     * @param userId <0 表示新开一个实例（取下一个空闲 userId）。
+     */
+    fun clone(pkg: String, userId: Int = USER): Map<String, Any?> {
         if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
         return try {
-            if (BlackBoxCore.get().isInstalled(pkg, USER)) {
-                return mapOf("r" to "ok", "detail" to "already")
+            val target = if (userId < 0) nextFreeUser(pkg) else userId
+            if (BlackBoxCore.get().isInstalled(pkg, target)) {
+                return mapOf("r" to "ok", "detail" to "already", "userId" to target)
             }
-            val result: InstallResult = BlackBoxCore.get().installPackageAsUser(pkg, USER)
-            if (result.success) mapOf("r" to "ok", "detail" to (result.packageName ?: pkg))
+            ensureUser(target)
+            val result: InstallResult = BlackBoxCore.get().installPackageAsUser(pkg, target)
+            if (result.success) mapOf("r" to "ok", "detail" to (result.packageName ?: pkg), "userId" to target)
             else mapOf(
                 "r" to "rejected",
                 "detail" to (result.msg ?: "install failed — 该应用可能无法在当前系统上虚拟化"),
+                "userId" to target,
             )
         } catch (t: Throwable) {
             mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")
         }
     }
 
-    fun launch(pkg: String): Map<String, Any?> {
+    fun launch(pkg: String, userId: Int = USER): Map<String, Any?> {
         if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
         return try {
-            if (!BlackBoxCore.get().isInstalled(pkg, USER)) {
+            if (!BlackBoxCore.get().isInstalled(pkg, userId)) {
                 return mapOf("r" to "not_found", "detail" to "not cloned")
             }
-            val ok = BlackBoxCore.get().launchApk(pkg, USER)
+            val ok = BlackBoxCore.get().launchApk(pkg, userId)
             if (ok) {
                 try {
-                    appCtx?.let { ToolboxController.onCloneLaunched(it, pkg) }
+                    appCtx?.let { ToolboxController.onCloneLaunched(it, pkg, userId) }
                 } catch (_: Throwable) {
                 }
                 mapOf("r" to "ok")
@@ -176,10 +219,11 @@ object VirtualEngine {
         }
     }
 
-    fun delete(pkg: String): Map<String, Any?> {
+    /** 只删除这个实例（该 userId 下的包和数据），不碰其他分身。 */
+    fun delete(pkg: String, userId: Int = USER): Map<String, Any?> {
         if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
         return try {
-            BlackBoxCore.get().uninstallPackageAsUser(pkg, USER)
+            BlackBoxCore.get().uninstallPackageAsUser(pkg, userId)
             mapOf("r" to "ok")
         } catch (t: Throwable) {
             mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")

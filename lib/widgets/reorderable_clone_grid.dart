@@ -17,6 +17,8 @@ class ReorderableCloneGrid extends StatefulWidget {
     required this.onOpen,
     required this.onDelete,
     required this.onPin,
+    this.onRename,
+    this.onAnother,
     this.mockingUid,
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 140),
   });
@@ -27,6 +29,8 @@ class ReorderableCloneGrid extends StatefulWidget {
   final ValueChanged<CloneApp> onOpen;
   final ValueChanged<CloneApp> onDelete;
   final ValueChanged<CloneApp> onPin;
+  final ValueChanged<CloneApp>? onRename;
+  final ValueChanged<CloneApp>? onAnother;
   final String? mockingUid;
   final EdgeInsets padding;
 
@@ -84,6 +88,8 @@ class _ReorderableCloneGridState extends State<ReorderableCloneGrid> {
       onOpen: () => widget.onOpen(c),
       onDelete: () => widget.onDelete(c),
       onPin: () => widget.onPin(c),
+      onRename: widget.onRename == null ? null : () => widget.onRename!(c),
+      onAnother: widget.onAnother == null ? null : () => widget.onAnother!(c),
       mocking: widget.mockingUid == c.uid,
     );
     return RepaintBoundary(

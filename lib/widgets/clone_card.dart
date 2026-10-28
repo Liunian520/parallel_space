@@ -14,6 +14,8 @@ class CloneCard extends StatelessWidget {
     required this.onOpen,
     required this.onDelete,
     required this.onPin,
+    this.onRename,
+    this.onAnother,
     this.mocking = false,
     this.dragging = false,
   });
@@ -23,6 +25,8 @@ class CloneCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onDelete;
   final VoidCallback onPin;
+  final VoidCallback? onRename;
+  final VoidCallback? onAnother;
   final bool mocking;
   final bool dragging;
 
@@ -57,12 +61,23 @@ class CloneCard extends StatelessWidget {
                 style: IconButton.styleFrom(minimumSize: const Size(36, 36), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 icon: Icon(Icons.more_vert_rounded, color: s.onSurfaceVariant),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                onSelected: (v) => switch (v) { 'open' => onOpen(), 'pin' => onPin(), _ => onDelete() },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new_rounded), title: Text('打开'))),
-                  PopupMenuItem(
+                onSelected: (v) => switch (v) {
+                  'open' => onOpen(),
+                  'pin' => onPin(),
+                  'rename' => onRename?.call(),
+                  'another' => onAnother?.call(),
+                  _ => onDelete(),
+                },
+                itemBuilder: (_) => [
+                  if (onRename != null)
+                    const PopupMenuItem(value: 'rename', child: ListTile(leading: Icon(Icons.edit_rounded), title: Text('改名'))),
+                  if (onAnother != null)
+                    const PopupMenuItem(
+                        value: 'another', child: ListTile(leading: Icon(Icons.library_add_rounded), title: Text('再分身一个'))),
+                  const PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new_rounded), title: Text('打开'))),
+                  const PopupMenuItem(
                       value: 'pin', child: ListTile(leading: Icon(Icons.add_to_home_screen_rounded), title: Text('添加到桌面'))),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                       value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline_rounded), title: Text('删除分身'))),
                 ],
               ),

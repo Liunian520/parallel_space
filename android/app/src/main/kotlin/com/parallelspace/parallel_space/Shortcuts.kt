@@ -20,14 +20,20 @@ object Shortcuts {
     const val EXTRA_PKG = "pkg"
     private const val ICON_PX = 192
 
-    /** 稳定且唯一的快捷方式 id（同一应用在工作资料中只有一份）。 */
-    fun shortcutId(pkg: String) = "clone_" + pkg.replace(Regex("[^A-Za-z0-9._]"), "_")
+    /**
+     * 稳定且唯一的快捷方式 id：按「包名 + userId」区分实例。
+     * userId=0 保持旧格式 clone_<包名>，已固定的老快捷方式不失效。
+     */
+    fun shortcutId(pkg: String, userId: Int = 0): String {
+        val base = "clone_" + pkg.replace(Regex("[^A-Za-z0-9._]"), "_")
+        return if (userId == 0) base else "${base}_u$userId"
+    }
 
     /** 打开分身的跳板 Intent：显式组件 + ACTION_VIEW + NEW_TASK|CLEAR_TASK。 */
     fun trampolineIntent(ctx: Context, cloneId: String, pkg: String): Intent =
         Intent(Intent.ACTION_VIEW).apply {
             component = ComponentName(ctx, ShortcutTrampolineActivity::class.java)
-            data = "parallelspace://clone/${Uri.encode(pkg)}".toUri()
+            data = "parallelspace://clone/${Uri.encode(cloneId.ifBlank { pkg })}".toUri()
             putExtra(MainActivity.EXTRA_CLONE_ID, cloneId)
             putExtra(EXTRA_PKG, pkg)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -59,7 +65,7 @@ object Shortcuts {
      * perm_denied：国产 ROM 的“桌面快捷方式”权限未开启（系统会静默丢弃请求）。
      */
     fun pin(ctx: Context, cloneId: String, pkg: String, label: String, force: Boolean): Map<String, Any?> {
-        val sid = shortcutId(pkg)
+        val sid = shortcutId(pkg, CloneId.userId(cloneId))
         fun r(v: String) = mapOf("r" to v, "sid" to sid, "rom" to OemAdapter.rom)
         // 虚拟引擎不依赖工作资料。只有两条路都没有时才拒绝。
         if (!VirtualEngine.available && WorkProfile.ourUser(ctx) == null) return r("no_profile")
@@ -128,8 +134,9 @@ class ShortcutTrampolineActivity : Activity() {
         super.onCreate(savedInstanceState)
         val pkg = intent?.getStringExtra(Shortcuts.EXTRA_PKG)
         val id = intent?.getStringExtra(MainActivity.EXTRA_CLONE_ID)
-        val direct = pkg != null && CloneGate.canLaunchDirectly(this, pkg)
-        val ok = direct && launchClone(pkg!!)
+        val userId = CloneId.userId(id)
+        val direct = pkg != null && CloneGate.canLaunchDirectly(this, pkg, id)
+        val ok = direct && launchClone(pkg!!, userId)
         if (!ok) {
             val fwd = MainActivity.cloneLaunchIntent(this, id ?: (pkg?.let { "w:$it" } ?: ""))
             if (Build.VERSION.SDK_INT >= 34) fwd.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -138,8 +145,8 @@ class ShortcutTrampolineActivity : Activity() {
         finish()
     }
 
-    private fun launchClone(pkg: String): Boolean = if (VirtualEngine.available) {
-        VirtualEngine.launch(pkg)["r"] == "ok"
+    private fun launchClone(pkg: String, userId: Int): Boolean = if (VirtualEngine.available) {
+        VirtualEngine.launch(pkg, userId)["r"] == "ok"
     } else {
         WorkProfile.launch(this, pkg) == "ok"
     }
@@ -147,7 +154,7 @@ class ShortcutTrampolineActivity : Activity() {
 
 /** 读取 Flutter 端保存的分身设置（shared_preferences 旧版存储：FlutterSharedPreferences / flutter.*）。 */
 object CloneGate {
-    fun canLaunchDirectly(ctx: Context, pkg: String): Boolean = try {
+    fun canLaunchDirectly(ctx: Context, pkg: String, id: String? = null): Boolean = try {
         val raw = ctx.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             .getString("flutter.clones.v1", null) ?: return false
         // 兼容 shared_preferences 可能添加的前缀
@@ -158,6 +165,8 @@ object CloneGate {
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             if (o.optString("pkg") != pkg) continue
+            // 多实例：有 id 时只看这个实例
+            if (!id.isNullOrBlank() && o.optString("uid").isNotBlank() && o.optString("uid") != id) continue
             res = !o.optBoolean("fp") && !o.optBoolean("pw") && !o.optBoolean("priv") && !o.optBoolean("frozen")
             break
         }
@@ -165,4 +174,22 @@ object CloneGate {
     } catch (_: Exception) {
         false
     }
+}
+
+/** 分身实例 id：userId=0 为 `w:<包名>`，其余为 `w:<包名>#<userId>`。 */
+object CloneId {
+    fun userId(id: String?): Int {
+        if (id.isNullOrBlank()) return 0
+        val i = id.lastIndexOf('#')
+        return if (i < 0) 0 else id.substring(i + 1).toIntOrNull()?.coerceAtLeast(0) ?: 0
+    }
+
+    fun pkg(id: String?): String {
+        if (id.isNullOrBlank()) return ""
+        val body = if (id.startsWith("w:")) id.substring(2) else id
+        val i = body.lastIndexOf('#')
+        return if (i < 0) body else body.substring(0, i)
+    }
+
+    fun of(pkg: String, userId: Int): String = if (userId == 0) "w:$pkg" else "w:$pkg#$userId"
 }

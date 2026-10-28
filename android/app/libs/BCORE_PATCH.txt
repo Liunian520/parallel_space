@@ -17,3 +17,17 @@ BlackBoxCore.getProcessName(Context) 原来只查 ActivityManager.getRunningAppP
   再打回 AAR
 
 不要改 ProcessNameCompat.get 的类名或方法签名。
+
+---
+1.3.16 第二个补丁：TaskDescriptionCompat.getTaskDescriptionLabel(int, CharSequence)
+
+原实现 String.format("[B%d]%s", userId, label)，最近任务里显示「[B0]应用名」。
+补丁后方法体：iload_0; aload_1; invokestatic com/parallelspace/parallel_space/TaskLabelCompat.label(ILjava/lang/CharSequence;)Ljava/lang/String;; areturn
+TaskLabelCompat 读宿主 files/clone_names.json（键 包名#userId），没有自定义名时返回原名，userId>0 时加「 分身N」。
+
+重新打补丁：
+  解出 top/niunaijun/blackbox/utils/compat/TaskDescriptionCompat.class
+  javac -cp asm-9.x.jar android/tools/PatchBlackBoxTaskLabel.java
+  java -cp asm-9.x.jar:. PatchBlackBoxTaskLabel TaskDescriptionCompat.class
+  jar uf classes.jar ...；再打回 AAR
+不要改 TaskLabelCompat.label 的类名或方法签名。

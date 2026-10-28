@@ -145,7 +145,8 @@ class CloneStore extends ChangeNotifier {
           c = CloneApp.fromJson(e);
         } catch (_) {}
         // 模拟分身 / 重复包名：丢弃
-        if (c == null || !seen.add(c.packageName)) {
+        // 同一实例（包名 + userId）只保留一份；同包名不同 userId 是多开，都保留
+        if (c == null || !seen.add('${c.packageName}#${c.userId}')) {
           _migrated = true;
           continue;
         }
@@ -167,15 +168,44 @@ class CloneStore extends ChangeNotifier {
   bool get isEmpty => visibleClones.isEmpty;
 
   CloneApp? byId(String uid) => _clones.where((c) => c.uid == uid).firstOrNull;
-  CloneApp? byPackage(String pkg) => _clones.where((c) => c.packageName == pkg).firstOrNull;
+  /// 该应用的第一个分身（userId 最小）。
+  CloneApp? byPackage(String pkg) {
+    final l = instancesOf(pkg);
+    return l.isEmpty ? null : l.first;
+  }
 
-  /// 快捷方式 / 小组件传入的 id：uid 或 'w:包名'。
-  CloneApp? resolve(String id) =>
-      byId(id) ?? (id.startsWith('w:') ? byPackage(id.substring(2)) : null);
+  /// 同一应用的所有分身实例，按 userId 升序。
+  List<CloneApp> instancesOf(String pkg) =>
+      _clones.where((c) => c.packageName == pkg).toList()..sort((a, b) => a.userId.compareTo(b.userId));
+
+  CloneApp? byInstance(String pkg, int userId) =>
+      _clones.where((c) => c.packageName == pkg && c.userId == userId).firstOrNull;
+
+  /// 快捷方式 / 小组件传入的 id：uid、'w:包名' 或 'w:包名#userId'。
+  CloneApp? resolve(String id) {
+    final hit = byId(id);
+    if (hit != null) return hit;
+    if (!id.startsWith('w:')) return null;
+    return byInstance(CloneApp.pkgOf(id), CloneApp.userIdOf(id));
+  }
+
+  /// 原生侧（快捷方式名、最近任务名）需要的显示名映射。
+  List<Map<String, Object?>> nameItems() => [
+        for (final c in _clones) {'pkg': c.packageName, 'userId': c.userId, 'uid': c.uid, 'label': c.customName},
+      ];
+
+  /// 名称同步回调（默认推给原生；测试可替换）。
+  void Function(List<Map<String, Object?>> items)? onNames;
 
   void _save() {
     _prefs.setString(_key, jsonEncode(_clones.map((c) => c.toJson()).toList()));
     onPersisted?.call();
+    final cb = onNames;
+    if (cb != null) {
+      try {
+        cb(nameItems());
+      } catch (_) {}
+    }
   }
 
   void _changed() {
@@ -246,18 +276,19 @@ class CloneStore extends ChangeNotifier {
   /// - 绝不把系统预装（联系人 / Play 商店 / 文件 / 电话等）自动加进列表
   @visibleForTesting
   void sync(List<AppInfo> apps) {
-    final byPkg = {for (final a in apps) a.packageName: a};
+    String k(String pkg, int u) => '$pkg#$u';
+    final byPkg = {for (final a in apps) k(a.packageName, a.userId): a};
     var changed = _scrubPresets();
     final before = _clones.length;
     // 不在工作资料中的用户分身 → 移除；预装即使还在工作资料也绝不保留
-    _clones.removeWhere((c) => !c.userAdded || isPresetPackage(c.packageName, label: c.appName) || !byPkg.containsKey(c.packageName));
+    _clones.removeWhere((c) => !c.userAdded || isPresetPackage(c.packageName, label: c.appName) || !byPkg.containsKey(k(c.packageName, c.userId)));
     if (_clones.length != before) changed = true;
     if (mockingUid != null && byId(mockingUid!) == null) {
       mockingUid = null;
       _prefs.remove('$_key.mocking');
     }
     for (final c in _clones) {
-      final a = byPkg[c.packageName];
+      final a = byPkg[k(c.packageName, c.userId)];
       if (a == null) continue;
       if (c.appName != a.name || c.version != a.version || c.category != a.category || c.frozen != a.suspended) {
         c
@@ -285,7 +316,7 @@ class CloneStore extends ChangeNotifier {
   /// 系统中新增了应用（复制成功后，不必等待完整刷新）。
   void addFromApp(AppInfo a) {
     if (isPresetPackage(a.packageName, label: a.name)) return;
-    if (byPackage(a.packageName) != null) return;
+    if (byInstance(a.packageName, a.userId) != null) return;
     _clones.add(CloneApp.fromApp(a)..userAdded = true);
     _changed();
   }
@@ -345,6 +376,7 @@ class CloneStore extends ChangeNotifier {
           uid: c.uid,
           packageName: c.packageName,
           appName: c.appName,
+          userId: c.userId,
           version: c.version,
           category: c.category,
           frozen: c.frozen,
@@ -354,7 +386,7 @@ class CloneStore extends ChangeNotifier {
     }
     var applied = 0, missing = 0;
     for (final b in incoming) {
-      final c = byPackage(b.packageName);
+      final c = byInstance(b.packageName, b.userId) ?? (b.userId == 0 ? byPackage(b.packageName) : null);
       if (c == null) {
         missing++;
         continue;

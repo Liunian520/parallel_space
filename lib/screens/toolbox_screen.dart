@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/clone_actions.dart';
+import '../services/a11y_jump.dart';
 import '../services/native_bridge.dart';
 import '../state/settings_store.dart';
 import '../widgets/blob_background.dart';
@@ -85,7 +86,7 @@ Future<void> maybeShowA11yGuide(BuildContext context) async {
     ),
   );
   await NativeBridge.a11yGuideMark();
-  if (go == true && context.mounted) await openPermissionPage(context, 'accessibility');
+  if (go == true && context.mounted) await openAccessibilitySmart(context);
 }
 
 class ToolboxScreen extends StatefulWidget {
@@ -98,6 +99,7 @@ class ToolboxScreen extends StatefulWidget {
 class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserver {
   bool? _overlay;
   bool? _a11y;
+  bool _a11yRestricted = false;
 
   @override
   void initState() {
@@ -122,20 +124,12 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
 
   Future<void> _refreshPerms() async {
     final o = await NativeBridge.overlayGranted();
-    final report = await NativeBridge.compatReport();
-    var a11y = false;
-    final items = report?['items'];
-    if (items is List) {
-      for (final raw in items) {
-        if (raw is Map && raw['id'] == 'accessibility') {
-          a11y = raw['status'] == 'ok';
-        }
-      }
-    }
+    final st = await loadA11yState();
     if (!mounted) return;
     setState(() {
       _overlay = o;
-      _a11y = a11y;
+      _a11y = st == A11yState.on;
+      _a11yRestricted = st == A11yState.restricted;
     });
   }
 
@@ -195,10 +189,20 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                   icon: Icons.accessibility_new_rounded,
                   title: '无障碍填入',
                   subtitle: _a11y == true
-                      ? '已开启，可一键写入登录框'
-                      : '开启后点「填入」写入输入框；未开时改为复制到剪贴板',
+                      ? '● 已开启，可一键写入登录框'
+                      : _a11yRestricted
+                          ? '● 未开启：需先在应用详情里「允许受限制的设置」，点此按步骤引导'
+                          : '● 未开启：点此直达「平行空间」无障碍开关；未开时填入改为复制',
+                  trailing: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _a11y == true ? Colors.green : Colors.orange,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   onTap: () async {
-                    await openPermissionPage(context, 'accessibility');
+                    await openAccessibilitySmart(context);
                     await _refreshPerms();
                   },
                 ),

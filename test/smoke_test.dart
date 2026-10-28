@@ -291,6 +291,10 @@ void main() {
     await t.tap(find.text('保存'));
     await settle(t, 10);
     expect(find.text('工作微信'), findsOneWidget);
+    expect(find.textContaining('已改名为「工作微信」'), findsOneWidget);
+    // 改名提示条会挡住底部的「移除分身」，先收起
+    t.state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger).first).removeCurrentSnackBar();
+    await settle(t, 5);
 
     await t.scrollUntilVisible(find.text('启用虚拟定位'), 200, scrollable: find.byType(Scrollable).first);
     final sw = find.descendant(of: find.widgetWithText(ListTile, '启用虚拟定位'), matching: find.byType(Switch));

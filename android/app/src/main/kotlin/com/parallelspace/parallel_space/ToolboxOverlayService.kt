@@ -66,6 +66,8 @@ class ToolboxOverlayService : Service() {
     private var expanded = false
     private var mode = Mode.TOOLS
     private var pkg = ""
+    /** 当前分身实例 id（w:包名 / w:包名#userId），用于密码本按实例关联。 */
+    private var uid = ""
     private var launchedAt = 0L
     private var lastSeenClientAt = 0L
     private var resolvedLabel: String = ""
@@ -115,12 +117,14 @@ class ToolboxOverlayService : Service() {
         val incoming = intent?.getStringExtra("pkg")?.takeIf { it.isNotBlank() }
         if (incoming != null) {
             pkg = incoming
+            uid = intent?.getStringExtra("uid")?.takeIf { it.isNotBlank() } ?: CloneId.of(incoming, 0)
             launchedAt = SystemClock.elapsedRealtime()
             lastSeenClientAt = launchedAt
             resolveAppInfoAsync(pkg)
             ToolboxCrashLog.append(this, "INFO", "start pkg=$pkg")
         } else if (pkg.isBlank()) {
             pkg = ToolboxController.lastPackage(this)
+            uid = ToolboxController.lastUid(this).ifBlank { if (pkg.isNotBlank()) CloneId.of(pkg, 0) else "" }
             if (pkg.isNotBlank()) resolveAppInfoAsync(pkg)
             ToolboxCrashLog.append(this, "INFO", "restart sticky pkg=$pkg flags=$flags")
         }
@@ -161,6 +165,7 @@ class ToolboxOverlayService : Service() {
             try {
                 val i = Intent(this, ToolboxOverlayService::class.java)
                 if (pkg.isNotBlank()) i.putExtra("pkg", pkg)
+                if (uid.isNotBlank()) i.putExtra("uid", uid)
                 startForegroundServiceCompat(i)
             } catch (t: Throwable) {
                 Log.w(TAG, "re-schedule after onTaskRemoved failed", t)
@@ -929,7 +934,7 @@ class ToolboxOverlayService : Service() {
 
     private fun openPasswordBook() {
         try {
-            startActivity(MainActivity.vaultLaunchIntent(this, pkg))
+            startActivity(MainActivity.vaultLaunchIntent(this, uid.ifBlank { pkg }))
             ToolboxCrashLog.append(this, "INFO", "open password book pkg=$pkg")
         } catch (err: Throwable) {
             ToolboxCrashLog.append(this, "ERROR", "open password book failed", err)
@@ -1082,15 +1087,24 @@ class ToolboxOverlayService : Service() {
             rebuild("vault_back")
         })
         panel.addView(button("去密码本添加") { openPasswordBook() })
+        if (!OemAdapter.accessibilityOn(this)) {
+            panel.addView(TextView(this).apply {
+                text = "● 无障碍未开启：点「填入」只能复制，需手动粘贴"
+                setTextColor(0xFFE0A030.toInt())
+                textSize = 12f
+                setPadding(dp(4), dp(4), dp(4), dp(2))
+            })
+            panel.addView(button("开启无障碍（一键填入）") { openAccessibility() })
+        }
         val forCurrent = vaultCache.get().filter { e ->
-            pkg.isNotBlank() && (e.pkg == pkg || e.cloneUid == "w:$pkg" || e.cloneUid == pkg)
+            pkg.isNotBlank() && matchesInstance(e)
         }
         val entries = if (forCurrent.isNotEmpty()) forCurrent else vaultCache.get()
         val scroll = ScrollView(this)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val groups = entries.groupBy { it.groupKey }
         val keys = groups.keys.sortedWith(compareBy<String> { key ->
-            val hit = groups[key].orEmpty().any { it.pkg == pkg || it.cloneUid == "w:$pkg" }
+            val hit = groups[key].orEmpty().any { matchesInstance(it) }
             if (hit) 0 else 1
         }.thenBy { it })
         if (keys.isEmpty()) {
@@ -1301,7 +1315,12 @@ class ToolboxOverlayService : Service() {
                     "error"
                 }
                 ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap fill result=$r")
-                handler.post { toast(fillMessage(r)) }
+                handler.post {
+                    toast(fillMessage(r))
+                    if (r == "copied" && !OemAdapter.accessibilityOn(this@ToolboxOverlayService)) {
+                        handler.postDelayed({ toast("想自动填入？展开工具箱 → 密码本 → 「开启无障碍」") }, 2200)
+                    }
+                }
             }
         }, 360)
     }
@@ -1318,6 +1337,25 @@ class ToolboxOverlayService : Service() {
         val ok = ToolboxController.copyText(this, e.password)
         ToolboxCrashLog.append(this, "INFO", "tap copy_password ok=$ok")
         toast(if (ok) "已复制密码" else if (e.password.isEmpty()) "没有密码可复制" else "复制失败")
+    }
+
+    private fun matchesInstance(e: VaultStore.Entry): Boolean {
+        val cu = e.cloneUid
+        if (cu.isNotBlank()) return cu == uid || (cu == pkg && CloneId.userId(uid) == 0)
+        return e.pkg == pkg && CloneId.userId(uid) == 0
+    }
+
+    private fun openAccessibility() {
+        ToolboxCrashLog.append(this, "INFO", "tap open_accessibility")
+        if (expanded) collapse()
+        val r = try { A11yJump.open(this) } catch (t: Throwable) { "error" }
+        toast(when (r) {
+            "on" -> "无障碍已开启"
+            "restricted" -> "请先点右上角「⋮ → 允许受限制的设置」，再回来开启无障碍"
+            "details" -> "请打开「平行空间」无障碍开关"
+            "list" -> "请在列表中找到「平行空间」并开启"
+            else -> "打开失败，请到 设置 → 无障碍 中开启"
+        })
     }
 
     private fun fillMessage(r: String) = when (r) {

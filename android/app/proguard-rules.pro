@@ -33,3 +33,9 @@
 
 # 镜像接口上的注解是运行时契约，不能被 R8 剥掉。
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
+
+# 1.3.16：bcore 的 TaskDescriptionCompat.getTaskDescriptionLabel 被字节码补丁改为调用这里
+-keep class com.parallelspace.parallel_space.TaskLabelCompat {
+    public static java.lang.String label(int, java.lang.CharSequence);
+    public static java.lang.String defaultLabel(java.lang.String, int);
+}

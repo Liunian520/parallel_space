@@ -76,8 +76,22 @@ List<VaultGroup> groupVaultEntries(
   ];
 }
 
-bool _isCurrent(List<VaultEntry> entries, String? pkg) =>
-    pkg != null && pkg.isNotEmpty && entries.any((e) => e.packageName == pkg);
+/// [cur] 可以是包名（旧）或实例 id（w:包名 / w:包名#N）。
+bool _isCurrent(List<VaultEntry> entries, String? cur) {
+  if (cur == null || cur.isEmpty) return false;
+  if (!cur.startsWith('w:')) return entries.any((e) => e.packageName == cur);
+  return entries.any((e) => vaultEntryMatchesInstance(e, cur));
+}
+
+/// 条目是否属于这个分身实例。旧条目（无实例 id 或只有包名）算作该应用的第一个分身。
+bool vaultEntryMatchesInstance(VaultEntry e, String uid) {
+  final hash = uid.lastIndexOf('#');
+  final body = uid.substring(2);
+  final pkg = hash < 0 ? body : uid.substring(2, hash);
+  final first = hash < 0 || uid.endsWith('#0');
+  if (e.cloneUid.isNotEmpty) return e.cloneUid == uid || (first && (e.cloneUid == pkg || e.cloneUid == 'w:$pkg'));
+  return first && e.packageName == pkg;
+}
 
 /// 按关键字过滤（备注名 / 账号 / 包名 / 备注 / 分身 uid）。
 List<VaultEntry> filterVaultEntries(List<VaultEntry> entries, String query) {

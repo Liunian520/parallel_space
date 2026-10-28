@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 
+import '../models/app_info.dart';
 import '../models/clone_app.dart';
 import '../state/clone_store.dart';
 import '../state/private_space_store.dart';
 import '../widgets/pin_pad.dart';
+import '../widgets/text_input_dialog.dart';
 import 'native_bridge.dart';
 
 void showGlassSnack(BuildContext context, String msg, {SnackBarAction? action}) {
@@ -178,7 +180,7 @@ Future<void> openClone(NavigatorState nav, CloneApp c) async {
   final store = context.read<CloneStore>();
   final vs = await NativeBridge.virtualStatus();
   if (vs['available'] == true) {
-    final m = await NativeBridge.launchVirtual(c.packageName);
+    final m = await NativeBridge.launchVirtual(c.packageName, userId: c.userId);
     final r = m['r'] as String? ?? 'error';
     if (!context.mounted) return;
     if (r == 'ok') {
@@ -253,6 +255,46 @@ Future<bool> setCloneFrozen(BuildContext context, CloneApp c, bool frozen, {bool
     if (!frozen) c.lastActiveMs = DateTime.now().millisecondsSinceEpoch;
   });
   return true;
+}
+
+/// 改名：只影响这个分身实例；桌面快捷方式、最近任务、工具箱同步使用新名字。
+Future<void> renameClone(BuildContext context, CloneApp c) async {
+  final store = context.read<CloneStore>();
+  final v = await showTextInputDialog(context,
+      title: '分身名称', initial: c.customLabel ?? '', hint: c.defaultName, helper: '留空则用「${c.defaultName}」', maxLength: 20);
+  if (v == null || !context.mounted) return;
+  store.update(c, (c) => c.customLabel = v.trim().isEmpty ? null : v.trim());
+  showGlassSnack(context, '已改名为「${c.customName}」，桌面图标与最近任务会同步更新');
+}
+
+/// 再分身一个：在新的虚拟用户里再装一份，数据与已有分身完全独立。
+Future<CloneApp?> cloneAnotherInstance(BuildContext context, CloneApp base) async {
+  final store = context.read<CloneStore>();
+  final vs = await NativeBridge.virtualStatus();
+  if (!context.mounted) return null;
+  if (vs['available'] != true) {
+    showGlassSnack(context, '多开需要虚拟引擎，当前引擎未就绪');
+    return null;
+  }
+  showGlassSnack(context, '正在创建「${base.appName}」的新分身…');
+  final m = await NativeBridge.cloneVirtual(base.packageName, userId: -1);
+  if (!context.mounted) return null;
+  final r = m['r'] as String? ?? 'error';
+  final u = m['userId'];
+  if (r != 'ok' || u is! num) {
+    showGlassSnack(context, cloneErrorText(r));
+    return null;
+  }
+  store.addFromApp(AppInfo(
+    packageName: base.packageName,
+    name: base.appName,
+    version: base.version,
+    category: base.category,
+    userId: u.toInt(),
+  ));
+  final c = store.byInstance(base.packageName, u.toInt());
+  if (c != null) showGlassSnack(context, '已创建「${c.customName}」，可在菜单里改名');
+  return c;
 }
 
 /// 创建分身：优先虚拟引擎；引擎不可用时回退工作资料 installExisting。

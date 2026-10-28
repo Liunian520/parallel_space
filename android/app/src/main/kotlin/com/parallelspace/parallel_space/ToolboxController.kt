@@ -52,6 +52,7 @@ object ToolboxController {
     private const val KEY_A11Y_WAS_ON = "a11y_was_on"
     private const val KEY_A11Y_WARNED = "a11y_warned"
     private const val KEY_LAST_PKG = "last_pkg"
+    private const val KEY_LAST_UID = "last_uid"
     const val CHANNEL_PERM = "toolbox_perm"
     private const val NOTIFY_A11Y = 1002
     private const val NOTIFY_OVERLAY = 1003
@@ -102,9 +103,15 @@ object ToolboxController {
     fun lastPackage(ctx: Context): String =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LAST_PKG, "").orEmpty()
 
-    fun onCloneLaunched(ctx: Context, pkg: String) {
+    /** 最近启动的分身实例 id（w:包名 或 w:包名#userId）。 */
+    fun lastUid(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LAST_UID, "").orEmpty()
+
+    fun onCloneLaunched(ctx: Context, pkg: String, userId: Int = 0) {
         val app = ctx.applicationContext
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_LAST_PKG, pkg).apply()
+        val uid = CloneId.of(pkg, userId)
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_LAST_PKG, pkg).putString(KEY_LAST_UID, uid).apply()
         if (!enabled(app)) {
             ToolboxCrashLog.append(app, "INFO", "clone launched but toolbox off pkg=$pkg")
             return
@@ -114,7 +121,7 @@ object ToolboxController {
             notifyOverlay(app)
             return
         }
-        val i = Intent(app, ToolboxOverlayService::class.java).putExtra("pkg", pkg)
+        val i = Intent(app, ToolboxOverlayService::class.java).putExtra("pkg", pkg).putExtra("uid", uid)
         try {
             ContextCompat.startForegroundService(app, i)
             ToolboxCrashLog.append(app, "INFO", "start overlay for pkg=$pkg")
@@ -227,6 +234,9 @@ object ToolboxController {
             "toolboxEnabled" -> result.success(enabled(activity))
             "overlayGranted" -> result.success(OemAdapter.canDrawOverlay(activity))
             "toolboxCurrentPackage" -> result.success(lastPackage(activity))
+            "toolboxCurrentUid" -> result.success(lastUid(activity))
+            "a11yStatus" -> result.success(A11yJump.status(activity))
+            "a11yOpen" -> result.success(A11yJump.open(activity, call.argument<Boolean>("force") == true))
             "compatReport" -> result.success(OemAdapter.report(activity))
             "compatOpen" -> result.success(OemAdapter.openCheck(activity, call.argument<String>("id") ?: ""))
             "openUrl" -> result.success(openUrl(activity, call.argument<String>("url") ?: ""))

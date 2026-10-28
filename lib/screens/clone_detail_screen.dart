@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,7 +14,6 @@ import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
 import '../widgets/location_section.dart';
 import '../widgets/section_tile.dart';
-import '../widgets/text_input_dialog.dart';
 import 'home_screen.dart';
 import 'vault_screen.dart';
 
@@ -21,11 +23,7 @@ class CloneDetailScreen extends StatelessWidget {
 
   static const _freezeOptions = [0, 5, 15, 30, 60, 180];
 
-  Future<void> _rename(BuildContext context, CloneStore store, CloneApp c) async {
-    final v = await showTextInputDialog(context,
-        title: '自定义名称', initial: c.customLabel ?? '', hint: c.appName, helper: '留空则使用应用原名');
-    if (v != null) store.update(c, (c) => c.customLabel = v.isEmpty ? null : v);
-  }
+  Future<void> _rename(BuildContext context, CloneStore store, CloneApp c) => renameClone(context, c);
 
   Future<void> _toggleFingerprint(BuildContext context, CloneStore store, CloneApp c, bool v) async {
     if (v) {
@@ -88,7 +86,7 @@ class CloneDetailScreen extends StatelessWidget {
                       maxLines: 2, textAlign: TextAlign.center, style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   Text(
-                    [if (c.customLabel != null) c.appName, if (c.version.isNotEmpty) 'v${c.version}', c.category.label].join(' · '),
+                    [if (c.customName != c.appName) c.appName, if (c.userId > 0) '实例 ${c.userId + 1}', if (c.version.isNotEmpty) 'v${c.version}', c.category.label].join(' · '),
                     textAlign: TextAlign.center,
                     style: tt.bodyMedium?.copyWith(color: s.onSurfaceVariant),
                   ),
@@ -105,6 +103,17 @@ class CloneDetailScreen extends StatelessWidget {
                       onPressed: () => _rename(context, store, c),
                       icon: const Icon(Icons.edit_rounded),
                       label: const Text('改名'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final n = await cloneAnotherInstance(context, c);
+                        if (n != null && context.mounted) {
+                          unawaited(Navigator.of(context)
+                              .pushReplacement(CupertinoPageRoute(builder: (_) => CloneDetailScreen(uid: n.uid))));
+                        }
+                      },
+                      icon: const Icon(Icons.library_add_rounded),
+                      label: const Text('再分身一个'),
                     ),
                     FilledButton.tonalIcon(
                       onPressed: () => pinCloneToHome(context, c),

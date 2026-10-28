@@ -256,18 +256,20 @@ class NativeBridge {
     return <AppInfo>[if (r != null) ...r.map(AppInfo.fromMap).nonNulls];
   }
 
-  static Future<Map<String, dynamic>> cloneVirtual(String pkg) async {
-    final m = await _call<Map>('cloneVirtual', {'pkg': pkg});
+  /// userId < 0：新建一个实例（再分身一个）；返回里带 userId。
+  static Future<Map<String, dynamic>> cloneVirtual(String pkg, {int userId = 0}) async {
+    final m = await _call<Map>('cloneVirtual', {'pkg': pkg, 'userId': userId});
     return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
   }
 
-  static Future<Map<String, dynamic>> launchVirtual(String pkg) async {
-    final m = await _call<Map>('launchVirtual', {'pkg': pkg});
+  static Future<Map<String, dynamic>> launchVirtual(String pkg, {int userId = 0}) async {
+    final m = await _call<Map>('launchVirtual', {'pkg': pkg, 'userId': userId});
     return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
   }
 
-  static Future<Map<String, dynamic>> deleteVirtual(String pkg) async {
-    final m = await _call<Map>('deleteVirtual', {'pkg': pkg});
+  /// 只删除这个实例（userId）下的应用与数据。
+  static Future<Map<String, dynamic>> deleteVirtual(String pkg, {int userId = 0}) async {
+    final m = await _call<Map>('deleteVirtual', {'pkg': pkg, 'userId': userId});
     return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
   }
 
@@ -351,6 +353,22 @@ class NativeBridge {
   static Future<bool?> overlayGranted() => _call<bool>('overlayGranted');
 
   static Future<String?> toolboxCurrentPackage() => _call<String>('toolboxCurrentPackage');
+
+  /// 当前分身实例 id（w:包名 / w:包名#userId）。
+  static Future<String?> toolboxCurrentUid() => _call<String>('toolboxCurrentUid');
+
+  /// 同步分身显示名到原生（快捷方式名、最近任务名）。
+  static Future<void> syncCloneNames(List<Map<String, Object?>> items) => _call('syncCloneNames', {'items': items});
+
+  /// 无障碍状态：on（已开启）、restricted（可能被「受限制的设置」拦着，true/false/null）。
+  static Future<Map<String, dynamic>> a11yStatus() async {
+    final m = await _call<Map>('a11yStatus');
+    return m == null ? const {} : Map<String, dynamic>.from(m);
+  }
+
+  /// 智能跳转到无障碍开关页。返回 on / restricted / details / list / error。
+  static Future<String> a11yOpen({bool force = false}) async =>
+      await _call<String>('a11yOpen', {'force': force}) ?? 'error';
 
   static Future<Map?> compatReport() => _call<Map>('compatReport');
 

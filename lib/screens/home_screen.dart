@@ -28,7 +28,8 @@ Future<bool> deleteClone(BuildContext context, CloneApp c) async {
   String r;
   String? detail;
   if (vs['available'] == true) {
-    final m = await NativeBridge.deleteVirtual(c.packageName);
+    // 只删这个实例（userId）的数据；同一应用的其他分身不受影响
+    final m = await NativeBridge.deleteVirtual(c.packageName, userId: c.userId);
     r = m['r'] as String? ?? 'error';
     detail = m['detail'] as String?;
   } else {
@@ -117,6 +118,8 @@ class HomeScreen extends StatelessWidget {
         onTap: (c) => Navigator.of(context).push(CupertinoPageRoute(builder: (_) => CloneDetailScreen(uid: c.uid))),
         onOpen: (c) => openClone(Navigator.of(context), c),
         onPin: (c) => pinCloneToHome(context, c),
+        onRename: (c) => renameClone(context, c),
+        onAnother: (c) => cloneAnotherInstance(context, c),
         mockingUid: store.mockingUid,
         onDelete: (c) async {
           if (!await confirmDelete(context, c) || !context.mounted) return;
