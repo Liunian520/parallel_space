@@ -19,7 +19,8 @@ import android.view.accessibility.AccessibilityManager
 import androidx.core.net.toUri
 
 /**
- * 厂商（ROM）适配集中处理：识别、桌面快捷方式、自启动 / 后台、电池优化、权限页跳转。
+ * 厂商（ROM）适配集中处理：识别、桌面快捷方式、自启动 / 后台、后台弹出、电池优化、权限页跳转。
+ * 1.3.19：补强华为 HarmonyOS / EMUI、荣耀 MagicOS（可装 Android 应用）的悬浮窗、启动管理、后台弹出、耗电跳转；纯血 NEXT 明确不支持。
  *
  * 跳转一律不预检 resolveActivity（Android 11+ 包可见性会误判），逐个 try/catch，
  * 最后落到标准系统页和应用详情。Activity 上下文优先不加 NEW_TASK，避免 HyperOS
@@ -247,9 +248,12 @@ object OemAdapter {
             Family.XIAOMI to "autostart" -> "设置 → 应用设置 → 授权管理 → 自启动管理 → 允许平行空间"
             Family.XIAOMI to "battery" -> "设置 → 电池 → 应用电量管理管理 → 平行空间 → 无限制"
             Family.XIAOMI to "shortcut" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 桌面快捷方式"
-            Family.HUAWEI to "overlay", Family.HONOR to "overlay" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
-            Family.HUAWEI to "accessibility", Family.HONOR to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 平行空间"
-            Family.HUAWEI to "autostart", Family.HONOR to "autostart" -> "设置 → 应用和服务 → 应用启动管理 → 平行空间 → 手动管理并全部允许"
+            Family.HUAWEI to "overlay", Family.HONOR to "overlay" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 悬浮窗（或「在其他应用上层显示」）"
+            Family.HUAWEI to "accessibility", Family.HONOR to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 已安装的服务 → 平行空间；开关是灰的先到应用详情右上角「⋮ → 允许受限制的设置」"
+            Family.HUAWEI to "autostart", Family.HONOR to "autostart" -> "设置 → 应用和服务 → 应用启动管理 → 平行空间 → 手动管理，并打开自动启动 / 关联启动 / 后台活动"
+            Family.HUAWEI to "battery", Family.HONOR to "battery" -> "设置 → 电池 → 更多电池设置 / 应用启动管理 → 平行空间 → 不优化或手动管理并允许后台"
+            Family.HUAWEI to "popup", Family.HONOR to "popup" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 后台弹出界面（必须允许，否则从工具箱/快捷方式打开分身会被拦）"
+            Family.HUAWEI to "shortcut", Family.HONOR to "shortcut" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 创建桌面快捷方式"
             Family.OPPO to "overlay" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
             Family.OPPO to "accessibility" -> "设置 → 其他设置 → 无障碍 → 平行空间"
             Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许平行空间"
@@ -292,6 +296,7 @@ object OemAdapter {
             "APPLICATION_DETAILS",
             "SETTINGS",
         )
+        "popup" -> listOf("oem:SingleAppOrBgPopup", "APPLICATION_DETAILS", "SETTINGS")
         else -> listOf("APPLICATION_DETAILS", "SETTINGS")
     }
 
@@ -306,12 +311,15 @@ object OemAdapter {
             Family.HUAWEI -> listOf(
                 "huawei:AddViewMonitorActivity",
                 "huawei:NotificationManagerActivity",
+                "huawei:SingleAppActivity",
                 "huawei:MainActivity(permission)",
             )
             Family.HONOR -> listOf(
                 "honor:AddViewMonitorActivity",
+                "honor:SingleAppActivity",
                 "honor:MainActivity(permission)",
                 "huawei:AddViewMonitorActivity",
+                "huawei:SingleAppActivity",
             )
             Family.OPPO -> listOf(
                 "coloros:FloatWindowListActivity",
@@ -357,10 +365,19 @@ object OemAdapter {
             Family.XIAOMI -> listOf("miui:AutoStartManagementActivity", "miui:HiddenAppsConfigActivity")
             Family.HUAWEI -> listOf(
                 "huawei:StartupNormalAppListActivity",
+                "huawei:StartupAppControlActivity",
                 "huawei:ProtectActivity",
+                "huawei:HwPowerManagerActivity",
+                "huawei:SingleAppActivity",
+            )
+            Family.HONOR -> listOf(
+                "honor:StartupNormalAppListActivity",
+                "honor:StartupAppControlActivity",
+                "honor:ProtectActivity",
+                "honor:SingleAppActivity",
+                "huawei:StartupNormalAppListActivity",
                 "huawei:StartupAppControlActivity",
             )
-            Family.HONOR -> listOf("honor:StartupNormalAppListActivity", "huawei:StartupNormalAppListActivity")
             Family.OPPO -> listOf(
                 "coloros:StartupAppListActivity",
                 "coloros:permission.startup.StartupAppListActivity",
@@ -452,12 +469,21 @@ object OemAdapter {
         )
         Family.HUAWEI -> listOf(
             cn("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
-            cn("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
             cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            // 部分 HarmonyOS 用功耗/启动合一页
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
+                .putExtra("packageName", ctx.packageName),
         )
         Family.HONOR -> listOf(
             cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.optimize.process.ProtectActivity"),
+            cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.SingleAppActivity")
+                .putExtra("packageName", ctx.packageName),
             cn("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
         )
         Family.OPPO -> listOf(
             cn("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
@@ -506,7 +532,7 @@ object OemAdapter {
     val workProfileNote: String
         get() = when (family) {
             Family.XIAOMI -> "系统的「应用双开」「手机分身」不是工作资料，平行空间不会使用它们；部分 MIUI / HyperOS 版本会拦截第三方创建工作资料，失败时请更新系统或改用系统双开。"
-            Family.HUAWEI -> "EMUI / HarmonyOS 的「应用分身」「隐私空间」与工作资料不同；部分版本不允许第三方应用创建工作资料。HarmonyOS NEXT（纯血鸿蒙）不支持 Android 应用。"
+            Family.HUAWEI -> "EMUI / HarmonyOS（可装 Android 应用的版本）的「应用分身」「隐私空间」与平行空间无关。主路径是进程内虚拟引擎。纯血鸿蒙 NEXT 无法运行本 APK。"
             Family.HONOR -> "MagicOS 的「应用分身」「隐私空间」与工作资料不同；部分版本可能拦截第三方创建工作资料。"
             Family.OPPO -> "ColorOS / OxygenOS / realme UI 的「应用分身」「系统分身」不是工作资料，通常可以共存。"
             Family.VIVO -> "OriginOS / Funtouch 的「应用分身」不是工作资料；部分版本会禁止第三方创建工作资料。"
@@ -605,6 +631,13 @@ object OemAdapter {
         "release" to Build.VERSION.RELEASE.orEmpty(),
         "abi" to Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
         "harmonyNext" to isHarmonyNext,
+        "harmony" to isHarmony,
+        "androidAppsOk" to !isHarmonyNext,
+        "harmonyNote" to when {
+            isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，平行空间无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
+            isHarmony || rom == "emui" || rom == "magicos" -> "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里打开悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面和电池白名单。"
+            else -> ""
+        },
         "overlayHint" to manualHint("overlay"),
         "accessibilityHint" to manualHint("accessibility"),
         "items" to checks(ctx).map {
@@ -624,6 +657,7 @@ object OemAdapter {
         notificationCheck(ctx),
         batteryCheck(ctx),
         backgroundCheck(ctx),
+        popupCheck(ctx),
         shortcutCheck(ctx),
         fgsCheck(ctx),
         processCheck(ctx),
@@ -642,11 +676,18 @@ object OemAdapter {
                 }
             }
             "notification" -> launchFirstDetailed(act, notificationIntents(act), "notification")
-            "battery" -> {
-                val code = requestIgnoreBattery(act)
-                if (code == "error") OpenResult("error", manualHint("battery")) else OpenResult(code)
+            "battery" -> run {
+                // 华为 / 荣耀先试厂商耗电页，再走系统「忽略电池优化」
+                val oem = batteryOemIntents(act)
+                if (oem.isNotEmpty()) {
+                    val code = launchFirst(act, oem)
+                    if (code != "error") return@run OpenResult(code)
+                }
+                val c = requestIgnoreBattery(act)
+                if (c == "error") OpenResult("error", manualHint("battery")) else OpenResult(c)
             }
             "autostart" -> launchFirstDetailed(act, autoStartIntents(act), "autostart")
+            "popup" -> launchFirstDetailed(act, popupIntents(act), "popup")
             "shortcut" -> launchFirstDetailed(
                 act,
                 shortcutPermissionIntents(act).ifEmpty { listOf(details(act)) },
@@ -760,6 +801,30 @@ object OemAdapter {
         return Check("autostart", "自启动与后台", status, detail, true)
     }
 
+    private fun popupCheck(ctx: Context): Check {
+        // 无法可靠读取「后台弹出界面」开关，国产 ROM 一律给出可跳转引导
+        if (family == Family.STOCK) {
+            return Check(
+                "popup",
+                "后台弹出界面",
+                "ok",
+                if (rom == "pixel") "Pixel 没有单独的后台弹窗开关。" else "原生 Android 一般不额外限制后台弹窗。",
+                false,
+            )
+        }
+        val detail = when (family) {
+            Family.HUAWEI -> "HarmonyOS / EMUI 默认拒绝「后台弹出界面」。工具箱开分身、桌面快捷方式都需要它；请到应用权限里允许。"
+            Family.HONOR -> "MagicOS 请允许「后台弹出界面」，否则从工具箱或快捷方式打开分身可能没反应。"
+            Family.XIAOMI -> "HyperOS / MIUI 请允许「后台弹出界面」或「后台弹出活动」。"
+            Family.VIVO -> "OriginOS 请在权限里允许「后台弹出界面」。"
+            Family.OPPO -> "ColorOS 请允许后台弹出 / 关联启动，否则快捷方式可能打不开分身。"
+            Family.SAMSUNG -> "One UI 一般无单独开关；若快捷方式无效，请检查电池与后台限制。"
+            Family.MEIZU -> "Flyme 请允许后台弹出相关权限。"
+            Family.STOCK -> ""
+        }
+        return Check("popup", "后台弹出界面", "unknown", detail, true)
+    }
+
     private fun shortcutCheck(ctx: Context): Check {
         val perm = shortcutPermission(ctx)
         val status = when (perm) {
@@ -869,14 +934,25 @@ object OemAdapter {
                     .putExtra("extra_pkgname", p),
             )
             Family.HUAWEI -> listOf(
+                // HarmonyOS 2–4 / EMUI：悬浮窗列表
                 cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
                 cn("com.huawei.systemmanager", "com.huawei.notificationmanager.ui.NotificationManagmentActivity"),
+                // 单应用权限页（含悬浮窗 / 后台弹出）
+                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
+                    .putExtra("packageName", p),
                 cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity"),
+                Intent().setClassName("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
+                    .putExtra("package_name", p),
             )
             Family.HONOR -> listOf(
                 cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.addviewmonitor.AddViewMonitorActivity"),
+                cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.SingleAppActivity")
+                    .putExtra("packageName", p),
                 cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.MainActivity"),
+                // 部分荣耀仍残留华为管家包名
                 cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
+                    .putExtra("packageName", p),
             )
             Family.OPPO -> listOf(
                 cn("com.coloros.safecenter", "com.coloros.safecenter.permission.floatwindow.FloatWindowListActivity"),
@@ -901,6 +977,57 @@ object OemAdapter {
             Family.STOCK -> emptyList()
         }
         return oem + standardPkg + standardBare
+    }
+
+    /**
+     * 「后台弹出界面」：华为 / 荣耀 / 小米等在后台启动 Activity（工具箱开分身、快捷方式）时常拦。
+     * 没有稳定的专用 Activity，优先单应用权限页，再回退应用详情。
+     */
+    fun popupIntents(ctx: Context): List<Intent> {
+        val p = ctx.packageName
+        val oem = when (family) {
+            Family.HUAWEI -> listOf(
+                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity").putExtra("packageName", p),
+                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            )
+            Family.HONOR -> listOf(
+                cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.SingleAppActivity").putExtra("packageName", p),
+                cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.MainActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity").putExtra("packageName", p),
+            )
+            Family.XIAOMI -> listOf(
+                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    .putExtra("extra_pkgname", p),
+                Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
+            )
+            Family.VIVO -> listOf(
+                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
+                    .putExtra("packagename", p),
+            )
+            Family.OPPO -> listOf(
+                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+                cn("com.oplus.safecenter", "com.oplus.safecenter.permission.PermissionTopActivity"),
+            )
+            else -> emptyList()
+        }
+        return oem + details(ctx)
+    }
+
+    /** 华为 / 荣耀电池与耗电页（在系统「忽略优化」之外再试）。 */
+    fun batteryOemIntents(ctx: Context): List<Intent> = when (family) {
+        Family.HUAWEI -> listOf(
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+        )
+        Family.HONOR -> listOf(
+            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.power.ui.HwPowerManagerActivity"),
+            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
+        )
+        else -> emptyList()
     }
 
     /** 1.3.16 起由 [A11yJump.intents] 负责；保留供链路展示。 */

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:parallel_space/screens/compat_screen.dart';
 import 'package:parallel_space/services/native_bridge.dart';
 
 import 'fake_native.dart';
@@ -81,5 +82,19 @@ void main() {
     });
     expect(await NativeBridge.vaultCopy('1', 'user'), 'copied_user');
     expect(await NativeBridge.vaultCopy('1', 'pass'), 'copied_pass');
+  });
+
+  test('CompatReport 解析鸿蒙说明字段', () {
+    final r = CompatReport.fromMap({
+      'romLabel': '华为 HarmonyOS 4',
+      'brand': '华为',
+      'harmonyNext': false,
+      'harmonyNote': '请打开后台弹出界面',
+      'items': [],
+    });
+    expect(r.harmonyNext, isFalse);
+    expect(r.harmonyNote, contains('后台弹出'));
+    final next = CompatReport.fromMap({'harmonyNext': true, 'harmonyNote': '纯血', 'items': []});
+    expect(next.harmonyNext, isTrue);
   });
 }

@@ -1,6 +1,6 @@
 # 平行空间
 
-[![version](https://img.shields.io/badge/version-1.3.18-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.19-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -32,8 +32,8 @@
 | 机型 | 系统 | 适配重点 |
 | --- | --- | --- |
 | 小米 / Redmi / POCO | MIUI 12–14、HyperOS 1–3 | 自启动、电池无限制、悬浮窗、桌面快捷方式（AppOps 10017）、进程名补丁 |
-| 华为 | EMUI、HarmonyOS 2–4 | 应用启动管理、悬浮窗。HarmonyOS NEXT（纯血鸿蒙）不能安装 Android 应用 |
-| 荣耀 | MagicOS | 启动管理、悬浮窗、快捷方式 |
+| 华为 | EMUI、HarmonyOS 2–4（可装 Android 应用） | 悬浮窗、无障碍、应用启动管理、**后台弹出界面**、电池。**纯血鸿蒙 NEXT 不支持** |
+| 荣耀 | MagicOS（可装 Android 应用） | 悬浮窗、启动管理、后台弹出、电池（hihonor 组件）；无 Android 兼容的纯血系统不适用 |
 | OPPO / 一加 / realme | ColorOS、OxygenOS、realme UI | 自启动、悬浮窗、桌面快捷方式权限页 |
 | vivo / iQOO | OriginOS、Funtouch | 后台弹出、自启动、悬浮窗、快捷方式 |
 | 三星 | One UI | 电池不受限、安全文件夹与工作资料冲突时的说明 |
@@ -62,7 +62,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.18+12318**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.19+12319**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -70,7 +70,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.18`（versionCode `12318`），下一次是 `1.3.19`（`12319`）。
+只把修订号加 1：当前 `1.3.19`（versionCode `12319`），下一次是 `1.3.20`（`12320`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 

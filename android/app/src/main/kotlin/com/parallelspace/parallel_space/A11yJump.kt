@@ -100,10 +100,15 @@ object A11yJump {
         )
         OemAdapter.Family.HUAWEI -> listOf(
             cn("com.huawei.systemmanager", "com.huawei.systemmanager.accessibility.AccessibilityActivity"),
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
+            // 部分 HarmonyOS 把已下载服务放在设置里的「已安装的服务」
+            highlighted(cn("com.android.settings", "com.android.settings.accessibility.AccessibilitySettings"), flat),
         )
         OemAdapter.Family.HONOR -> listOf(
             cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.accessibility.AccessibilityActivity"),
+            cn("com.huawei.systemmanager", "com.huawei.systemmanager.accessibility.AccessibilityActivity"),
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
         )
         OemAdapter.Family.OPPO -> listOf(

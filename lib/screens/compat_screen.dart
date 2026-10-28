@@ -45,6 +45,8 @@ class CompatReport {
     required this.release,
     required this.abi,
     required this.items,
+    this.harmonyNext = false,
+    this.harmonyNote = '',
   });
 
   final String romLabel;
@@ -56,6 +58,12 @@ class CompatReport {
   final String abi;
   final List<CompatItem> items;
 
+  /// 疑似纯血鸿蒙 NEXT（不能跑 Android APK）。
+  final bool harmonyNext;
+
+  /// 给用户看的鸿蒙说明（可空）。
+  final String harmonyNote;
+
   static CompatReport fromMap(Map? raw) {
     final itemsRaw = raw?['items'];
     return CompatReport(
@@ -66,6 +74,8 @@ class CompatReport {
       sdk: (raw?['sdk'] as num?)?.toInt() ?? 0,
       release: raw?['release'] is String ? raw!['release'] as String : '',
       abi: raw?['abi'] is String ? raw!['abi'] as String : '',
+      harmonyNext: raw?['harmonyNext'] == true,
+      harmonyNote: raw?['harmonyNote'] is String ? raw!['harmonyNote'] as String : '',
       items: [
         if (itemsRaw is List) ...itemsRaw.map(CompatItem.fromMap).nonNulls,
       ],
@@ -168,6 +178,27 @@ class _CompatScreenState extends State<CompatScreen> with WidgetsBindingObserver
                     style: tt.bodyMedium,
                   ),
                 ),
+                if (report.harmonyNote.isNotEmpty) ...[
+                  Glass(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(
+                        report.harmonyNext ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+                        color: report.harmonyNext ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          report.harmonyNote,
+                          style: tt.bodyMedium?.copyWith(
+                            color: report.harmonyNext ? Theme.of(context).colorScheme.error : null,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 for (final item in report.items) ...[
                   Glass(
                     padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
