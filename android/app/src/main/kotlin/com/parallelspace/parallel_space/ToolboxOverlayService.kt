@@ -39,6 +39,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import java.util.concurrent.Executors
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -50,6 +51,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 而气泡在收起态可点）。展开/收起会 remove+addView 重建输入通道。
  * 根布局 dispatchTouchEvent 打点；每次 updateViewLayout 记 flags。
  * 1.3.12：只读密码本；保留 tick 防抖、AppOps、START_STICKY、看门狗。
+ * 1.3.18：密码本列出全部账号（备注名），点进详情再复制/一键填入；不限当前分身。
  */
 class ToolboxOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -65,6 +67,8 @@ class ToolboxOverlayService : Service() {
     private var lp: WindowManager.LayoutParams? = null
     private var expanded = false
     private var mode = Mode.TOOLS
+    /** 密码本二级页：正在查看的条目 id；空表示在备注名列表。 */
+    private var vaultDetailId: String = ""
     private var pkg = ""
     /** 当前分身实例 id（w:包名 / w:包名#userId），用于密码本按实例关联。 */
     private var uid = ""
@@ -837,6 +841,7 @@ class ToolboxOverlayService : Service() {
             when (mode) {
                 Mode.TOOLS -> buildTools(panel)
                 Mode.VAULT -> buildVault(panel)
+                Mode.VAULT_DETAIL -> buildVaultDetail(panel)
             }
             // 全屏窗内只重新摆放面板，不改窗口尺寸
             positionPanel()
@@ -1036,6 +1041,7 @@ class ToolboxOverlayService : Service() {
         for (tool in ToolboxCatalog.tools()) {
             panel.addView(toolRow(tool.title, tool.summary) {
                 if (tool.id == "vault") {
+                    vaultDetailId = ""
                     mode = Mode.VAULT
                     try {
                         VaultStore.invalidateCache()
@@ -1081,8 +1087,13 @@ class ToolboxOverlayService : Service() {
         }
     }
 
+    /**
+     * 一级：全部账号的备注名列表（可滚动，不按当前分身过滤）。
+     * 当前分身的条目排在前面，方便就近选用；点备注进入二级详情。
+     */
     private fun buildVault(panel: LinearLayout) {
         panel.addView(header("密码本", "返回") {
+            vaultDetailId = ""
             mode = Mode.TOOLS
             rebuild("vault_back")
         })
@@ -1096,40 +1107,183 @@ class ToolboxOverlayService : Service() {
             })
             panel.addView(button("开启无障碍（一键填入）") { openAccessibility() })
         }
-        val forCurrent = vaultCache.get().filter { e ->
-            pkg.isNotBlank() && matchesInstance(e)
-        }
-        val entries = if (forCurrent.isNotEmpty()) forCurrent else vaultCache.get()
+        val all = vaultCache.get()
         val scroll = ScrollView(this)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val groups = entries.groupBy { it.groupKey }
-        val keys = groups.keys.sortedWith(compareBy<String> { key ->
-            val hit = groups[key].orEmpty().any { matchesInstance(it) }
-            if (hit) 0 else 1
-        }.thenBy { it })
-        if (keys.isEmpty()) {
+        if (all.isEmpty()) {
             col.addView(emptyVault())
-        } else if (forCurrent.isEmpty() && pkg.isNotBlank() && entries.isNotEmpty()) {
-            col.addView(TextView(this).apply {
-                text = "当前分身还没有账号，下面是其他分身的条目。"
+        } else {
+            panel.addView(TextView(this).apply {
+                text = "全部 ${all.size} 个账号 · 点备注名查看 / 填入（不限当前分身）"
                 setTextColor(Palette(this@ToolboxOverlayService).sub)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(0, dp(4), 0, dp(8))
+                setPadding(dp(4), dp(2), dp(4), dp(6))
             })
-        }
-        for (key in keys) {
-            val list = groups[key].orEmpty().sortedBy { it.label }
-            val current = list.any { it.pkg == pkg }
-            val title = if (current) {
-                "当前分身 · ${resolvedLabel.ifBlank { list.first().pkg }}"
-            } else {
-                appLabelCached(list.first().pkg).ifBlank { list.first().pkg }
+            val sorted = all.sortedWith(
+                compareBy<VaultStore.Entry> { e -> if (matchesInstance(e)) 0 else 1 }
+                    .thenBy { remarkTitle(it).lowercase() },
+            )
+            val hasCurrent = sorted.any { matchesInstance(it) }
+            var sectionPlaced = ""
+            for (e in sorted) {
+                val want = when {
+                    matchesInstance(e) -> "当前分身"
+                    hasCurrent -> "其他分身"
+                    else -> "全部账号"
+                }
+                if (sectionPlaced != want) {
+                    sectionPlaced = want
+                    col.addView(section(want))
+                }
+                col.addView(remarkRow(e))
             }
-            col.addView(section(title))
-            for (e in list) col.addView(entryRow(e))
         }
         scroll.addView(col)
-        panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(280)))
+        panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(300)))
+    }
+
+    /** 备注名行：主标题 + 所属分身副标题，点进详情。 */
+    private fun remarkRow(e: VaultStore.Entry): LinearLayout {
+        val pal = Palette(this)
+        val title = remarkTitle(e)
+        val sub = remarkSubtitle(e)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = rowBg(pal)
+            setPadding(dp(14), dp(12), dp(10), dp(12))
+            minimumHeight = dp(52)
+            val gap = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            gap.topMargin = dp(8)
+            layoutParams = gap
+            isClickable = true
+            isFocusable = true
+            val textCol = LinearLayout(this@ToolboxOverlayService).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(this@ToolboxOverlayService).apply {
+                    text = title
+                    setTextColor(pal.text)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    typeface = Typeface.DEFAULT_BOLD
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                if (sub.isNotBlank()) {
+                    addView(TextView(this@ToolboxOverlayService).apply {
+                        text = sub
+                        setTextColor(pal.sub)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setPadding(0, dp(2), 0, 0)
+                    })
+                }
+            }
+            addView(textCol)
+            addView(TextView(this@ToolboxOverlayService).apply {
+                text = "›"
+                setTextColor(pal.sub)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setPadding(dp(8), 0, dp(4), 0)
+            })
+            setOnClickListener {
+                tapFeedback(it)
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap vault remark id=${e.id}")
+                vaultDetailId = e.id
+                mode = Mode.VAULT_DETAIL
+                rebuild("vault_detail")
+            }
+        }
+    }
+
+    /** 二级：原有复制账号/密码 + 一键填入。 */
+    private fun buildVaultDetail(panel: LinearLayout) {
+        val e = vaultCache.get().firstOrNull { it.id == vaultDetailId }
+        panel.addView(header(e?.let { remarkTitle(it) } ?: "账号", "返回") {
+            vaultDetailId = ""
+            mode = Mode.VAULT
+            rebuild("vault_detail_back")
+        })
+        if (e == null) {
+            panel.addView(TextView(this).apply {
+                text = "这条账号已删除或不存在"
+                setTextColor(Palette(this@ToolboxOverlayService).sub)
+                setPadding(dp(8), dp(16), dp(8), dp(8))
+            })
+            panel.addView(button("回到列表") {
+                vaultDetailId = ""
+                mode = Mode.VAULT
+                rebuild("vault_missing_back")
+            })
+            return
+        }
+        if (!OemAdapter.accessibilityOn(this)) {
+            panel.addView(TextView(this).apply {
+                text = "● 无障碍未开启：点「填入」只能复制，需手动粘贴"
+                setTextColor(0xFFE0A030.toInt())
+                textSize = 12f
+                setPadding(dp(4), dp(4), dp(4), dp(2))
+            })
+        }
+        val sub = remarkSubtitle(e)
+        if (sub.isNotBlank()) {
+            panel.addView(TextView(this).apply {
+                text = sub
+                setTextColor(Palette(this@ToolboxOverlayService).sub)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(dp(4), 0, dp(4), dp(8))
+            })
+        }
+        val scroll = ScrollView(this)
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(entryRow(e))
+        scroll.addView(col)
+        panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(300)))
+    }
+
+    /** 列表主标题：备注名 → 账号 → 分身名 / 包名。 */
+    private fun remarkTitle(e: VaultStore.Entry): String {
+        val label = e.label.trim()
+        if (label.isNotEmpty() && label != "未命名") return label
+        if (e.username.isNotBlank()) return e.username.trim()
+        return cloneDisplayName(e).ifBlank { e.pkg.ifBlank { "未命名" } }
+    }
+
+    /** 副标题：所属分身（自定义名优先）· 包名精简。 */
+    private fun remarkSubtitle(e: VaultStore.Entry): String {
+        val clone = cloneDisplayName(e)
+        val cur = if (matchesInstance(e)) " · 当前分身" else ""
+        return when {
+            clone.isNotBlank() -> "$clone$cur"
+            e.pkg.isNotBlank() -> "${e.pkg}$cur"
+            else -> cur.trimStart(' ', '·')
+        }
+    }
+
+    private fun cloneDisplayName(e: VaultStore.Entry): String {
+        val userId = CloneId.userId(e.cloneUid.ifBlank { null })
+        val fromNames = readCloneLabel(e.pkg, userId)
+        if (fromNames.isNotBlank()) return fromNames
+        val app = appLabelCached(e.pkg)
+        return when {
+            app.isNotBlank() && userId > 0 -> "$app 分身${userId + 1}"
+            app.isNotBlank() -> app
+            userId > 0 -> "${e.pkg} 分身${userId + 1}"
+            else -> e.pkg
+        }
+    }
+
+    private fun readCloneLabel(pkg: String, userId: Int): String {
+        if (pkg.isBlank()) return ""
+        return try {
+            val f = File(filesDir, CloneNames.FILE)
+            if (!f.isFile) return ""
+            val json = org.json.JSONObject(f.readText())
+            json.optString(CloneNames.key(pkg, userId), "").trim()
+        } catch (_: Throwable) {
+            ""
+        }
     }
 
     private fun entryRow(e: VaultStore.Entry): LinearLayout {
@@ -1304,6 +1458,10 @@ class ToolboxOverlayService : Service() {
 
     @Volatile private var lastPerformFillAt = 0L
 
+    /**
+     * 一键填入：写入**当前前台窗口**的输入框，不要求条目所属包名与当前分身一致。
+     * 这样从「其他分身」的账号列表里选一条，也能填到正在登录的页面。
+     */
     private fun performFill(e: VaultStore.Entry) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastPerformFillAt < 1000L) {
@@ -1405,7 +1563,7 @@ class ToolboxOverlayService : Service() {
             }
             val old = vaultCache.getAndSet(list)
             if (old == list) return@runBg
-            if (thenRebuild || (expanded && mode == Mode.VAULT)) {
+            if (thenRebuild || (expanded && (mode == Mode.VAULT || mode == Mode.VAULT_DETAIL))) {
                 handler.post {
                     if (!expanded) return@post
                     requestRebuild(if (thenRebuild) "vault_refresh" else "vault_async")
@@ -1447,7 +1605,7 @@ class ToolboxOverlayService : Service() {
             val l = appLabelSync(packageName)
             handler.post {
                 labelMemo[packageName] = l
-                if (expanded && mode == Mode.VAULT) requestRebuild("label_memo")
+                if (expanded && (mode == Mode.VAULT || mode == Mode.VAULT_DETAIL)) requestRebuild("label_memo")
             }
         }
         return packageName
@@ -1729,7 +1887,7 @@ class ToolboxOverlayService : Service() {
         setColor(if (pal.night) 0x18FFFFFF.toInt() else 0x10000000.toInt())
     }
 
-    private enum class Mode { TOOLS, VAULT }
+    private enum class Mode { TOOLS, VAULT, VAULT_DETAIL }
 
     private class Palette(ctx: Context) {
         val night = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
