@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.3.25+12325
+version: 1.3.26+12326
 
 environment:
   sdk: ^3.13.7
@@ -98,7 +98,7 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# 启动图标：用户附件原样缩放（保留圆角紫圈与白底画布），不重绘
+# 启动图标：选项 A 原图等比缩至 ~72% 居中白底安全区（多保留圆角紫圈），不抠边/重绘
 flutter_launcher_icons:
   android: true
   ios: false
