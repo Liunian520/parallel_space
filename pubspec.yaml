@@ -105,4 +105,5 @@ flutter_launcher_icons:
   image_path: assets/brand/alter_ego_1024.png
   adaptive_icon_background: "#2C2B8C"
   adaptive_icon_foreground: assets/brand/alter_ego_1024.png
+  adaptive_icon_foreground_inset: 0
   min_sdk_android: 24
