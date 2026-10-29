@@ -251,6 +251,24 @@ void main() {
   });
 
   group('SettingsStore', () {
+    test('旧默认标题「平行空间」升级迁移为 Alter Ego；自定义标题保留', () async {
+      final legacy = await prefsWith({'s.title': '平行空间'});
+      final st = SettingsStore(legacy);
+      expect(st.spaceTitle, 'Alter Ego');
+      expect(legacy.getString('s.title'), 'Alter Ego');
+
+      final custom = await prefsWith({'s.title': '我的空间'});
+      final st2 = SettingsStore(custom);
+      expect(st2.spaceTitle, '我的空间');
+
+      final fresh = await prefsWith({});
+      final st3 = SettingsStore(fresh);
+      expect(st3.spaceTitle, 'Alter Ego');
+
+      st3.applyBackup({'title': '平行空间'});
+      expect(st3.spaceTitle, 'Alter Ego');
+    });
+
     test('越界 / 类型错误不崩溃；移除旧的模拟通知设置；精简特效默认开启', () async {
       final p = await prefsWith({'s.theme': 9, 'priv.pinHash': 'h', 's.dyn': 'yes', 's.badge': true, 's.dndS': 3});
       final st = SettingsStore(p);

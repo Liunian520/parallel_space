@@ -1,6 +1,18 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.23（versionCode 12323），下一次是 1.3.24（12324）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.24（versionCode 12324），下一次是 1.3.25（12325）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.24] - 2026-10-29
+
+### 修复
+
+- **首页大标题仍显示「平行空间」**：标题来自 `SettingsStore.spaceTitle` / SharedPreferences `s.title`。旧安装把默认名「平行空间」持久化了，仅改代码默认值不会覆盖。现启动时若标题为旧产品名「平行空间」（或 Parallel Space）则迁移为 **Alter Ego** 并写回 prefs；用户自定义标题（如「我的空间」）保留。备份恢复同样迁移。
+- 审计：`lib/` 与 Kotlin 用户可见文案中已无「平行空间」产品名残留（README 中文别名除外）。
+- **启动图标**：以用户指定附件为唯一源图，仅做等比缩放写入 mipmap / 自适应前景（满版、无 inset、不去白边、不重绘）；自适应背景取源图像素角点色。
+
+### 其他
+
+- 版本 `1.3.24+12324`。
 
 ## [1.3.23] - 2026-10-29
 

@@ -10,6 +10,11 @@ class SettingsStore extends ChangeNotifier {
     }
 
     spaceTitle = get<String>('s.title') ?? spaceTitle;
+    // 旧版默认产品名「平行空间」写进了 prefs；升级后迁移为 Alter Ego（用户自定义标题保留）。
+    if (isLegacyProductTitle(spaceTitle)) {
+      spaceTitle = kDefaultSpaceTitle;
+      _prefs.setString('s.title', spaceTitle);
+    }
     final ti = get<int>('s.theme') ?? 0;
     themeMode = ThemeMode.values[ti.clamp(0, ThemeMode.values.length - 1)];
     useDynamicColor = get<bool>('s.dyn') ?? useDynamicColor;
@@ -25,7 +30,17 @@ class SettingsStore extends ChangeNotifier {
   }
 
   final SharedPreferences _prefs;
-  String spaceTitle = 'Alter Ego';
+
+  /// 桌面大标题 / 关于页等处的产品名默认值。
+  static const String kDefaultSpaceTitle = 'Alter Ego';
+
+  /// 需要自动迁移的旧默认名（不含用户自定义如「我的空间」）。
+  static bool isLegacyProductTitle(String t) {
+    final s = t.trim();
+    return s == '平行空间' || s == 'Parallel Space' || s == 'parallel space';
+  }
+
+  String spaceTitle = kDefaultSpaceTitle;
   ThemeMode themeMode = ThemeMode.system;
   bool useDynamicColor = true;
   Color seed = seedOptions.first;
@@ -78,7 +93,8 @@ class SettingsStore extends ChangeNotifier {
 
   void applyBackup(Map<String, dynamic> m) => set((s) {
         if (m['title'] is String && (m['title'] as String).trim().isNotEmpty) {
-          final t = (m['title'] as String).trim();
+          var t = (m['title'] as String).trim();
+          if (isLegacyProductTitle(t)) t = kDefaultSpaceTitle;
           s.spaceTitle = t.length > 10 ? t.substring(0, 10) : t;
         }
         if (m['theme'] is int) s.themeMode = ThemeMode.values[(m['theme'] as int).clamp(0, ThemeMode.values.length - 1)];
