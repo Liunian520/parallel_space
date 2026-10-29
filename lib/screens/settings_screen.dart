@@ -138,7 +138,7 @@ class SettingsScreen extends StatelessWidget {
             GlassTile(
               icon: Icons.widgets_rounded,
               title: '桌面小组件',
-              subtitle: '长按桌面 → 小组件 → 平行空间：显示主屏前 4 个分身，点击直接打开',
+              subtitle: '长按桌面 → 小组件 → Alter Ego：显示主屏前 4 个分身，点击直接打开',
             ),
             GlassTile(
               icon: Icons.toggle_on_rounded,
@@ -237,11 +237,11 @@ class SettingsScreen extends StatelessWidget {
           SectionCard(title: '关于', children: [
             GlassTile(
               icon: Icons.info_outline_rounded,
-              title: '关于平行空间',
+              title: '关于 Alter Ego',
               subtitle: '版本 $kAppVersionName · 虚拟引擎分身',
               onTap: () => showAboutDialog(
                 context: context,
-                applicationName: '平行空间',
+                applicationName: 'Alter Ego',
                 applicationVersion: kAppVersionName,
                 applicationIcon: const Icon(Icons.layers_rounded, size: 40),
                 children: const [
@@ -368,7 +368,7 @@ Future<bool> _ask(BuildContext context, String title, String body, String ok) as
 /// [leftover] 为真时，这是虚拟引擎已接管后的清理，不会动当前虚拟分身。
 Future<void> confirmWipeWorkProfile(BuildContext context, {bool leftover = false}) async {
   final body = leftover
-      ? '只删除系统里残留的工作资料。平行空间里用虚拟引擎创建的分身和个人空间中的应用都不受影响。'
+      ? '只删除系统里残留的工作资料。Alter Ego 里用虚拟引擎创建的分身和个人空间中的应用都不受影响。'
       : '工作资料中的所有分身、登录状态和数据都会被永久删除，个人空间中的应用不受影响。';
   if (!await _ask(context, '删除工作资料？', body, '继续') || !context.mounted) {
     return;

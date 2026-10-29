@@ -57,10 +57,10 @@ class PinWatcher {
 
 /// 各 ROM 开启“桌面快捷方式”权限的路径。
 String shortcutPermissionPath(String rom) => switch (rom) {
-      'hyperos' || 'miui' => '设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 桌面快捷方式 → 允许',
-      'harmony' || 'emui' || 'magicos' => '设置 → 应用和服务 → 权限管理 → 平行空间 → 创建桌面快捷方式 → 允许',
-      'coloros' || 'oxygenos' || 'realmeui' => '设置 → 应用 → 应用管理 → 平行空间 → 权限 → 桌面快捷方式 → 允许',
-      'originos' || 'funtouch' => 'i管家 → 应用管理 → 权限管理 → 平行空间 → 桌面快捷方式 → 允许',
+      'hyperos' || 'miui' => '设置 → 应用设置 → 应用管理 → Alter Ego → 权限管理 → 桌面快捷方式 → 允许',
+      'harmony' || 'emui' || 'magicos' => '设置 → 应用和服务 → 权限管理 → Alter Ego → 创建桌面快捷方式 → 允许',
+      'coloros' || 'oxygenos' || 'realmeui' => '设置 → 应用 → 应用管理 → Alter Ego → 权限 → 桌面快捷方式 → 允许',
+      'originos' || 'funtouch' => 'i管家 → 应用管理 → 权限管理 → Alter Ego → 桌面快捷方式 → 允许',
       _ => '检查桌面启动器是否允许添加快捷方式（部分第三方启动器不支持）',
     };
 
@@ -112,7 +112,7 @@ Future<void> _shortcutGuide(BuildContext context, CloneApp c, String rom, {requi
       icon: const Icon(Icons.add_to_home_screen_rounded),
       title: Text(denied ? '需要“桌面快捷方式”权限' : '没有添加成功？'),
       content: Text(
-        '${denied ? '系统禁止了平行空间创建桌面快捷方式。' : '系统没有确认添加，通常是“桌面快捷方式”权限未开启。'}\n\n'
+        '${denied ? '系统禁止了 Alter Ego 创建桌面快捷方式。' : '系统没有确认添加，通常是“桌面快捷方式”权限未开启。'}\n\n'
         '开启路径：${shortcutPermissionPath(rom)}\n\n开启后返回这里再试一次；也可以尝试兼容方式。',
       ),
       actions: [
@@ -164,7 +164,7 @@ Future<bool> verifyCloneLock(BuildContext context, CloneApp c) async {
 
 String launchErrorText(String r, String name) => switch (r) {
       'not_found' => '工作资料中没有「$name」，且无法自动复制（个人空间中可能未安装）',
-      'no_profile' => '平行空间的工作资料不存在',
+      'no_profile' => 'Alter Ego 的工作资料不存在',
       'paused' => '“工作应用”已关闭，已请求系统开启，请确认后重试',
       'suspended' => '「$name」处于冻结状态',
       _ => '启动失败，请稍后重试',
@@ -236,7 +236,7 @@ Future<bool> _unlockPrivate(BuildContext context) async {
 }
 
 String _suspendMsg(String r) => switch (r) {
-      'not_owner' => '需要由平行空间创建的工作资料',
+      'not_owner' => '需要由 Alter Ego 创建的工作资料',
       'no_profile' => '工作资料不可用',
       'unsupported' => '当前系统不支持',
       _ => '系统拒绝了操作',
@@ -326,7 +326,7 @@ String cloneErrorText(String r) => switch (r) {
       'engine_unavailable' => '虚拟引擎未就绪，无法创建分身',
       'rejected' => '系统拒绝了静默复制（或该应用无法虚拟化）',
       'unsupported' => '当前设备不支持此分身方式',
-      'not_owner' => '需要由平行空间创建的工作资料',
+      'not_owner' => '需要由 Alter Ego 创建的工作资料',
       'no_profile' => '工作资料不存在',
       'need_permission' || 'need_setup' || 'relinking' => '需要完成跨空间授权 / 初始化后再试',
       _ => '复制失败：$r',

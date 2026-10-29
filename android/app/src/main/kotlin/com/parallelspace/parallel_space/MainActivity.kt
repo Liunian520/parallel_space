@@ -444,7 +444,7 @@ class MainActivity : FlutterFragmentActivity() {
         }, 500)
     }
 
-    /** 工作资料内实例：切回个人空间的平行空间（CrossProfileApps，同包名跨资料启动）。 */
+    /** 工作资料内实例：切回个人空间的 Alter Ego（CrossProfileApps，同包名跨资料启动）。 */
     private fun openPersonalSpace(): String {
         if (Build.VERSION.SDK_INT >= 28) {
             try {

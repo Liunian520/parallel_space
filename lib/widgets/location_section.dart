@@ -263,7 +263,7 @@ class _LocationSectionState extends State<LocationSection> {
                   const SizedBox(height: 10),
                   Text(
                     '说明：Android 无法只对单个分身伪装位置。开始模拟后，系统 GPS 与网络定位都会被替换，'
-                    '手机上所有应用读取到的都是该位置，直到你点击“停止”。需在开发者选项中将“平行空间”设为模拟位置信息应用。'
+                    '手机上所有应用读取到的都是该位置，直到你点击“停止”。需在开发者选项中将“Alter Ego”设为模拟位置信息应用。'
                     '路线回放由 App 推进，App 被系统杀死后位置会停在最后一个点。',
                     style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant, height: 1.5),
                   ),
@@ -594,7 +594,7 @@ void showMockGuideSheet(BuildContext context) {
           const SizedBox(height: 12),
           step(1, '打开“设置 → 关于手机”，连续点击“版本号”7 次开启开发者选项'),
           step(2, '进入“开发者选项 → 选择模拟位置信息应用”'),
-          step(3, '选择“平行空间”，返回本页再次点击“开始模拟”'),
+          step(3, '选择“Alter Ego”，返回本页再次点击“开始模拟”'),
           const SizedBox(height: 8),
           Text('开启后，模拟位置将对整台设备生效，停止后恢复真实定位。', style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant)),
           const SizedBox(height: 20),

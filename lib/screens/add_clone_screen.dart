@@ -11,7 +11,7 @@ import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
 import '../widgets/pressable.dart';
 
-/// 添加分身：列出个人空间中真实安装的可启动应用（版本、分类来自系统），复制到平行空间的工作资料。
+/// 添加分身：列出个人空间中真实安装的可启动应用（版本、分类来自系统），复制到 Alter Ego 的工作资料。
 class AddCloneScreen extends StatefulWidget {
   const AddCloneScreen({super.key, this.loader});
 
@@ -368,7 +368,7 @@ class _AppSheet extends StatelessWidget {
             existingCount > 0
                 ? '已有 $existingCount 个分身。再开一个会使用独立数据，默认名为「${app.name} 分身${existingCount + 1}」。'
                 : context.watch<CloneStore>().engineAvailable
-                    ? '在平行空间内安装同一份应用（不重新下载），使用原应用图标。分身与原应用的账号和数据完全隔离。'
+                    ? '在 Alter Ego 内安装同一份应用（不重新下载），使用原应用图标。分身与原应用的账号和数据完全隔离。'
                     : '将在工作资料中安装同一份应用（不重新下载），带公文包角标。分身与原应用的账号和数据完全隔离。',
             textAlign: TextAlign.center, style: tt.bodySmall?.copyWith(color: s.onSurfaceVariant, height: 1.5)),
         const SizedBox(height: 20),

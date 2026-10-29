@@ -10,7 +10,7 @@ enum WorkState {
   /// 尚未检测
   unknown,
 
-  /// 平行空间创建的工作资料可用
+  /// Alter Ego 创建的工作资料可用
   ready,
 
   /// 工作资料存在但“工作应用”被关闭
@@ -45,7 +45,7 @@ class WorkProfileStatus {
   final WorkState state;
   final bool provisioningAllowed;
 
-  /// 系统自带的“应用双开 / 分身”空间存在（它不是工作资料，平行空间不会使用它）。
+  /// 系统自带的“应用双开 / 分身”空间存在（它不是工作资料，Alter Ego 不会使用它）。
   final bool xspace;
 
   /// ROM 标识：hyperos / miui / harmony / emui / magicos / coloros / oxygenos / originos / funtouch / oneui / stock …
@@ -231,7 +231,7 @@ class NativeBridge {
   static Future<String> requestInteractAcrossProfiles() async =>
       await _call<String>('requestInteractAcrossProfiles') ?? 'unsupported';
 
-  /// 工作资料内实例：切换到个人空间的平行空间。
+  /// 工作资料内实例：切换到个人空间的 Alter Ego 。
   static Future<String> openPersonalSpace() async => await _call<String>('openPersonalSpace') ?? 'error';
 
   /// 打开系统中可删除工作资料的设置页。

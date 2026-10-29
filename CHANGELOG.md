@@ -1,6 +1,17 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.20（versionCode 12320），下一次是 1.3.21（12321）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.21（versionCode 12321），下一次是 1.3.22（12322）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.21] - 2026-10-29
+
+### 品牌
+
+- **产品名改为 Alter Ego**：桌面图标名、MaterialApp title、关于页、欢迎/引导文案、工具箱与无障碍提示、机型权限路径、小组件说明等所有用户可见产品名均改为 Alter Ego；中文说明句式保留，仅产品名英文化（如「欢迎使用 Alter Ego」）。`applicationId` 仍为 `com.parallelspace.parallel_space`，类名与仓库名不变，覆盖安装与更新链路不变。README 保留中文别名「平行空间」。
+- **新启动图标**：双层圆角方块（蓝实色应用窗 + 半透明毛玻璃镜像），表达「应用分身 / 双开」；自适应图标（前景透明 PNG + 浅冰蓝→淡紫渐变背景）+ 各密度 mipmap。
+
+### 其他
+
+- 版本 `1.3.21+12321`。
 
 ## [1.3.20] - 2026-10-29
 

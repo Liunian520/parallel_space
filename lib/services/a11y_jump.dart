@@ -18,9 +18,9 @@ Future<A11yState> loadA11yState() async {
 String a11yJumpMessage(String r) => switch (r) {
       'on' => '无障碍已开启，可一键填入',
       'restricted' => '先点右上角「⋮ → 允许受限制的设置」，验证后返回，再点一次「去开启」',
-      'details' => '已打开「平行空间」无障碍开关页，打开开关即可',
-      'list' => '请在列表（可能在「已下载的应用 / 已安装的服务」里）找到「平行空间」并开启',
-      _ => '打不开设置页，请手动前往：设置 → 无障碍 → 平行空间',
+      'details' => '已打开「Alter Ego」无障碍开关页，打开开关即可',
+      'list' => '请在列表（可能在「已下载的应用 / 已安装的服务」里）找到「Alter Ego」并开启',
+      _ => '打不开设置页，请手动前往：设置 → 无障碍 → Alter Ego',
     };
 
 /// 智能跳转：已开 → 提示；被「受限制的设置」拦着 → 先说明再跳应用详情；否则直达本服务开关页。
@@ -38,7 +38,7 @@ Future<String> openAccessibilitySmart(BuildContext context) async {
         title: const Text('需要先「允许受限制的设置」'),
         content: const Text(
           'Android 13 及以上（含 HyperOS）对非应用商店安装的应用，会把无障碍开关置灰。\n\n'
-          '1. 接下来会打开「平行空间」的应用详情页\n'
+          '1. 接下来会打开「Alter Ego」的应用详情页\n'
           '2. 点右上角「⋮」→「允许受限制的设置」，按提示验证\n'
           '3. 返回这里再点一次「去开启」，就会直达无障碍开关\n\n'
           '如果菜单里没有这一项，说明已允许，直接点「直接去开启」。',

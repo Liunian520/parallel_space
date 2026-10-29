@@ -484,7 +484,7 @@ private fun pasteOnce(node: AccessibilityNodeInfo, text: String, svc: ToolboxAcc
     clearField(node)
     pauseBriefly()
     val cm = svc.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
+    cm.setPrimaryClip(ClipData.newPlainText("Alter Ego", text))
     node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
     pauseBriefly()
     val len = currentText(node).length

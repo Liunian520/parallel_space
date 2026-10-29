@@ -25,7 +25,7 @@ class CloneAdminReceiver : DeviceAdminReceiver() {
             if (!dpm.isProfileOwnerApp(ctx.packageName)) return
             val admin = admin(ctx)
             try {
-                dpm.setProfileName(admin, "平行空间")
+                dpm.setProfileName(admin, "Alter Ego")
             } catch (_: Exception) {
             }
             ctx.packageManager.setComponentEnabledSetting(
@@ -64,6 +64,6 @@ class CloneAdminReceiver : DeviceAdminReceiver() {
             }
         }
 
-        const val HANDSHAKE_NAME = "平行空间"
+        const val HANDSHAKE_NAME = "Alter Ego"
     }
 }

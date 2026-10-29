@@ -199,7 +199,7 @@ class CloneDetailScreen extends StatelessWidget {
                   icon: Icons.delete_forever_rounded,
                   title: '移除分身',
                   subtitle: store.engineAvailable
-                      ? '从平行空间删除这份分身，不影响个人空间中的原应用'
+                      ? '从 Alter Ego 删除这份分身，不影响个人空间中的原应用'
                       : '隐藏工作资料中的这份应用，数据保留；不影响个人空间中的原应用',
                   danger: true,
                   onTap: () async {

@@ -10,7 +10,7 @@ import '../models/clone_app.dart';
 import '../services/backup_codec.dart';
 import '../services/native_bridge.dart';
 
-/// 真实分身状态：分身 = 平行空间工作资料中可启动的应用；这里额外保存每个分身的设置（锁、定位、私密、冻结…）。
+/// 真实分身状态：分身 = Alter Ego 工作资料中可启动的应用；这里额外保存每个分身的设置（锁、定位、私密、冻结…）。
 ///
 /// 数据仍存于 `clones.v1`（原生快捷方式跳板也读取它）。旧版本的“模拟分身”（没有包名）在加载时丢弃。
 class CloneStore extends ChangeNotifier {

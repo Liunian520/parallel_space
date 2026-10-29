@@ -25,7 +25,7 @@ class SettingsStore extends ChangeNotifier {
   }
 
   final SharedPreferences _prefs;
-  String spaceTitle = '平行空间';
+  String spaceTitle = 'Alter Ego';
   ThemeMode themeMode = ThemeMode.system;
   bool useDynamicColor = true;
   Color seed = seedOptions.first;

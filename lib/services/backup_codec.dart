@@ -61,10 +61,10 @@ class BackupCodec {
       throw BackupFormatException('文件不是有效的 JSON');
     }
     if (root is! Map) throw BackupFormatException('备份格式不正确');
-    if (root['format'] != format) throw BackupFormatException('这不是平行空间的备份文件');
+    if (root['format'] != format) throw BackupFormatException('这不是 Alter Ego 的备份文件');
     final v = root['version'];
     if (v is! int || v < 1) throw BackupFormatException('备份版本无效');
-    if (v > version) throw BackupFormatException('备份来自更新版本的平行空间（v$v），请先升级 App');
+    if (v > version) throw BackupFormatException('备份来自更新版本的 Alter Ego（v$v），请先升级 App');
 
     var skipped = 0;
     List<T> list<T>(String key, T? Function(Object?) parse) {

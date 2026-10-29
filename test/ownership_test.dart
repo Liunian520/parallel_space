@@ -111,7 +111,7 @@ void main() {
     native.install(t);
     await pumpApp(t, await freshPrefs());
     expect(find.text('创建工作资料'), findsNothing);
-    expect(find.textContaining('请在主空间打开平行空间进行管理'), findsOneWidget);
+    expect(find.textContaining('请在主空间打开 Alter Ego 进行管理'), findsOneWidget);
     await t.tap(find.text('切换到主空间'));
     await settle(t, 5);
     expect(native.methods, contains('openPersonalSpace'));

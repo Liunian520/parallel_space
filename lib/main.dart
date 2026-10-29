@@ -123,7 +123,7 @@ class ParallelSpaceApp extends StatelessWidget {
       final dark = ColorScheme.fromSeed(
           seedColor: seed, brightness: Brightness.dark, tertiary: useDyn ? null : const Color(0xFF4DD0E1));
       return MaterialApp(
-        title: '平行空间',
+        title: 'Alter Ego',
         debugShowCheckedModeBanner: false,
         themeMode: st.themeMode,
         theme: AppTheme.build(light),

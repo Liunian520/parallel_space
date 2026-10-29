@@ -244,55 +244,55 @@ object OemAdapter {
     /** 各品牌手动路径提示（全部跳转失败时展示）。 */
     fun manualHint(kind: String): String {
         val where = when (family to kind) {
-            Family.XIAOMI to "overlay" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 显示悬浮窗"
-            Family.XIAOMI to "accessibility" -> "设置 → 更多设置 → 无障碍 → 已下载的应用 / 已安装的服务 → 平行空间"
-            Family.XIAOMI to "autostart" -> "设置 → 应用设置 → 授权管理 → 自启动管理 → 允许平行空间"
-            Family.XIAOMI to "battery" -> "设置 → 电池 → 应用电量管理管理 → 平行空间 → 无限制"
-            Family.XIAOMI to "shortcut" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 桌面快捷方式"
-            Family.HUAWEI to "overlay", Family.HONOR to "overlay" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 悬浮窗（或「在其他应用上层显示」）"
-            Family.HUAWEI to "accessibility", Family.HONOR to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 已安装的服务 → 平行空间；开关是灰的先到应用详情右上角「⋮ → 允许受限制的设置」"
-            Family.HUAWEI to "autostart", Family.HONOR to "autostart" -> "设置 → 应用和服务 → 应用启动管理 → 平行空间 → 手动管理，并打开自动启动 / 关联启动 / 后台活动"
-            Family.HUAWEI to "battery", Family.HONOR to "battery" -> "设置 → 电池 → 更多电池设置 / 应用启动管理 → 平行空间 → 不优化或手动管理并允许后台"
-            Family.HUAWEI to "popup", Family.HONOR to "popup" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 后台弹出界面（必须允许，否则从工具箱/快捷方式打开分身会被拦）"
-            Family.HUAWEI to "shortcut", Family.HONOR to "shortcut" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 创建桌面快捷方式"
-            Family.XIAOMI to "popup" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 后台弹出界面"
-            Family.XIAOMI to "notification" -> "设置 → 通知与控制中心 → 应用通知 → 平行空间"
-            Family.OPPO to "overlay" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
-            Family.OPPO to "accessibility" -> "设置 → 其他设置 / 辅助功能 → 无障碍 → 已下载的服务 → 平行空间；灰开关先「允许受限制的设置」"
-            Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许平行空间；一加还可在「关联启动」里允许"
-            Family.OPPO to "battery" -> "设置 → 电池 → 应用耗电管理 / 耗电异常优化 → 平行空间 → 允许后台耗电或不优化"
-            Family.OPPO to "popup" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 后台弹出界面（或关联启动）"
-            Family.OPPO to "shortcut" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 创建桌面快捷方式"
-            Family.OPPO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → 平行空间"
-            Family.VIVO to "overlay" -> "设置 → 应用与权限 → 权限管理 → 权限 → 悬浮窗 → 平行空间"
-            Family.VIVO to "accessibility" -> "设置 → 快捷与辅助 / 更多设置 → 无障碍 → 平行空间；灰开关先允许受限制的设置"
-            Family.VIVO to "autostart" -> "设置 → 电池 → 后台耗电管理 → 平行空间 → 允许高耗电；权限 → 自启动 / 关联启动"
-            Family.VIVO to "battery" -> "设置 → 电池 → 后台耗电管理 → 平行空间 → 允许高耗电与后台运行"
-            Family.VIVO to "popup" -> "设置 → 应用与权限 → 权限管理 → 权限 → 后台弹出界面 → 平行空间"
-            Family.VIVO to "shortcut" -> "设置 → 应用与权限 → 权限管理 → 权限 → 桌面快捷方式 → 平行空间"
-            Family.VIVO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → 平行空间"
-            Family.SAMSUNG to "overlay" -> "设置 → 应用 → 平行空间 → 在其他应用上层显示"
-            Family.SAMSUNG to "accessibility" -> "设置 → 辅助功能 → 已安装的应用 → 平行空间"
-            Family.SAMSUNG to "battery" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用 → 添加平行空间"
-            Family.SAMSUNG to "autostart" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 把平行空间设为不受限"
-            Family.SAMSUNG to "popup" -> "设置 → 应用 → 平行空间 → 其他权限 / 允许出现在顶部；并检查电池后台限制"
-            Family.SAMSUNG to "shortcut" -> "设置 → 应用 → 平行空间 → 其他权限 / 主屏幕快捷方式"
-            Family.SAMSUNG to "notification" -> "设置 → 通知 → 应用通知 → 平行空间"
-            Family.MEIZU to "overlay" -> "设置 → 应用管理 → 平行空间 → 权限管理 → 悬浮窗"
-            Family.MEIZU to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 平行空间"
-            Family.MEIZU to "autostart" -> "设置 → 电量管理 / 应用管理 → 后台管理 → 允许平行空间"
-            Family.MEIZU to "battery" -> "设置 → 电量管理 → 耗电保护 / 后台管理 → 平行空间 → 允许"
-            Family.MEIZU to "popup" -> "设置 → 应用管理 → 平行空间 → 权限 → 后台弹出相关项"
-            Family.MEIZU to "shortcut" -> "设置 → 应用管理 → 平行空间 → 权限 → 桌面快捷方式"
+            Family.XIAOMI to "overlay" -> "设置 → 应用设置 → 应用管理 → Alter Ego → 权限管理 → 显示悬浮窗"
+            Family.XIAOMI to "accessibility" -> "设置 → 更多设置 → 无障碍 → 已下载的应用 / 已安装的服务 → Alter Ego"
+            Family.XIAOMI to "autostart" -> "设置 → 应用设置 → 授权管理 → 自启动管理 → 允许 Alter Ego"
+            Family.XIAOMI to "battery" -> "设置 → 电池 → 应用电量管理管理 → Alter Ego → 无限制"
+            Family.XIAOMI to "shortcut" -> "设置 → 应用设置 → 应用管理 → Alter Ego → 权限管理 → 桌面快捷方式"
+            Family.HUAWEI to "overlay", Family.HONOR to "overlay" -> "设置 → 应用和服务 → 应用管理 → Alter Ego → 权限 → 悬浮窗（或「在其他应用上层显示」）"
+            Family.HUAWEI to "accessibility", Family.HONOR to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 已安装的服务 → Alter Ego；开关是灰的先到应用详情右上角「⋮ → 允许受限制的设置」"
+            Family.HUAWEI to "autostart", Family.HONOR to "autostart" -> "设置 → 应用和服务 → 应用启动管理 → Alter Ego → 手动管理，并打开自动启动 / 关联启动 / 后台活动"
+            Family.HUAWEI to "battery", Family.HONOR to "battery" -> "设置 → 电池 → 更多电池设置 / 应用启动管理 → Alter Ego → 不优化或手动管理并允许后台"
+            Family.HUAWEI to "popup", Family.HONOR to "popup" -> "设置 → 应用和服务 → 应用管理 → Alter Ego → 权限 → 后台弹出界面（必须允许，否则从工具箱/快捷方式打开分身会被拦）"
+            Family.HUAWEI to "shortcut", Family.HONOR to "shortcut" -> "设置 → 应用和服务 → 应用管理 → Alter Ego → 权限 → 创建桌面快捷方式"
+            Family.XIAOMI to "popup" -> "设置 → 应用设置 → 应用管理 → Alter Ego → 权限管理 → 后台弹出界面"
+            Family.XIAOMI to "notification" -> "设置 → 通知与控制中心 → 应用通知 → Alter Ego"
+            Family.OPPO to "overlay" -> "设置 → 应用 → 应用管理 → Alter Ego → 权限 → 悬浮窗"
+            Family.OPPO to "accessibility" -> "设置 → 其他设置 / 辅助功能 → 无障碍 → 已下载的服务 → Alter Ego；灰开关先「允许受限制的设置」"
+            Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许 Alter Ego；一加还可在「关联启动」里允许"
+            Family.OPPO to "battery" -> "设置 → 电池 → 应用耗电管理 / 耗电异常优化 → Alter Ego → 允许后台耗电或不优化"
+            Family.OPPO to "popup" -> "设置 → 应用 → 应用管理 → Alter Ego → 权限 → 后台弹出界面（或关联启动）"
+            Family.OPPO to "shortcut" -> "设置 → 应用 → 应用管理 → Alter Ego → 权限 → 创建桌面快捷方式"
+            Family.OPPO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → Alter Ego"
+            Family.VIVO to "overlay" -> "设置 → 应用与权限 → 权限管理 → 权限 → 悬浮窗 → Alter Ego"
+            Family.VIVO to "accessibility" -> "设置 → 快捷与辅助 / 更多设置 → 无障碍 → Alter Ego；灰开关先允许受限制的设置"
+            Family.VIVO to "autostart" -> "设置 → 电池 → 后台耗电管理 → Alter Ego → 允许高耗电；权限 → 自启动 / 关联启动"
+            Family.VIVO to "battery" -> "设置 → 电池 → 后台耗电管理 → Alter Ego → 允许高耗电与后台运行"
+            Family.VIVO to "popup" -> "设置 → 应用与权限 → 权限管理 → 权限 → 后台弹出界面 → Alter Ego"
+            Family.VIVO to "shortcut" -> "设置 → 应用与权限 → 权限管理 → 权限 → 桌面快捷方式 → Alter Ego"
+            Family.VIVO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → Alter Ego"
+            Family.SAMSUNG to "overlay" -> "设置 → 应用 → Alter Ego → 在其他应用上层显示"
+            Family.SAMSUNG to "accessibility" -> "设置 → 辅助功能 → 已安装的应用 → Alter Ego"
+            Family.SAMSUNG to "battery" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用 → 添加 Alter Ego"
+            Family.SAMSUNG to "autostart" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 把 Alter Ego 设为不受限"
+            Family.SAMSUNG to "popup" -> "设置 → 应用 → Alter Ego → 其他权限 / 允许出现在顶部；并检查电池后台限制"
+            Family.SAMSUNG to "shortcut" -> "设置 → 应用 → Alter Ego → 其他权限 / 主屏幕快捷方式"
+            Family.SAMSUNG to "notification" -> "设置 → 通知 → 应用通知 → Alter Ego"
+            Family.MEIZU to "overlay" -> "设置 → 应用管理 → Alter Ego → 权限管理 → 悬浮窗"
+            Family.MEIZU to "accessibility" -> "设置 → 辅助功能 → 无障碍 → Alter Ego"
+            Family.MEIZU to "autostart" -> "设置 → 电量管理 / 应用管理 → 后台管理 → 允许 Alter Ego"
+            Family.MEIZU to "battery" -> "设置 → 电量管理 → 耗电保护 / 后台管理 → Alter Ego → 允许"
+            Family.MEIZU to "popup" -> "设置 → 应用管理 → Alter Ego → 权限 → 后台弹出相关项"
+            Family.MEIZU to "shortcut" -> "设置 → 应用管理 → Alter Ego → 权限 → 桌面快捷方式"
             else -> when (kind) {
-                "overlay" -> "设置 → 应用 → 特殊应用权限 → 显示在其他应用的上层 → 平行空间"
-                "accessibility" -> "设置 → 无障碍 → 已下载的应用 / 已安装的服务 → 平行空间"
-                "battery" -> "设置 → 应用 → 平行空间 → 电池 → 不优化"
-                "notification" -> "设置 → 应用 → 平行空间 → 通知"
-                "shortcut" -> "设置 → 应用 → 平行空间 → 权限"
-                "popup" -> "设置 → 应用 → 平行空间 → 权限 → 后台弹出界面（名称因品牌而异）"
-                "autostart" -> "设置 → 应用 → 平行空间 → 电池 / 自启动"
-                else -> "设置 → 应用 → 平行空间"
+                "overlay" -> "设置 → 应用 → 特殊应用权限 → 显示在其他应用的上层 → Alter Ego"
+                "accessibility" -> "设置 → 无障碍 → 已下载的应用 / 已安装的服务 → Alter Ego"
+                "battery" -> "设置 → 应用 → Alter Ego → 电池 → 不优化"
+                "notification" -> "设置 → 应用 → Alter Ego → 通知"
+                "shortcut" -> "设置 → 应用 → Alter Ego → 权限"
+                "popup" -> "设置 → 应用 → Alter Ego → 权限 → 后台弹出界面（名称因品牌而异）"
+                "autostart" -> "设置 → 应用 → Alter Ego → 电池 / 自启动"
+                else -> "设置 → 应用 → Alter Ego"
             }
         }
         return "没能自动打开设置页。请手动：$where"
@@ -502,7 +502,7 @@ object OemAdapter {
         Family.XIAOMI -> listOf(
             cn("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
             cn("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
-                .putExtra("package_name", ctx.packageName).putExtra("package_label", "平行空间"),
+                .putExtra("package_name", ctx.packageName).putExtra("package_label", "Alter Ego"),
         )
         Family.HUAWEI -> listOf(
             cn("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
@@ -582,7 +582,7 @@ object OemAdapter {
         Family.OPPO -> "ColorOS / OxygenOS / realme：悬浮窗、自启动、关联启动、后台弹出、耗电管理允许后台。"
         Family.VIVO -> "OriginOS / Funtouch：悬浮窗、自启动、后台弹出界面、后台耗电「允许高耗电」。"
         Family.SAMSUNG -> "One UI：系统悬浮窗 + 电池「永不休眠的应用」；安全文件夹已启用时不影响虚拟引擎主路径。"
-        Family.MEIZU -> "Flyme：悬浮窗、后台管理、耗电保护允许平行空间。"
+        Family.MEIZU -> "Flyme：悬浮窗、后台管理、耗电保护允许 Alter Ego 。"
         Family.STOCK -> if (rom == "pixel") {
             "Pixel：打开「显示在其他应用上层」与无障碍即可；电池优化建议关闭。"
         } else {
@@ -593,15 +593,15 @@ object OemAdapter {
     // ---------------- 工作资料说明 ----------------
     val workProfileNote: String
         get() = when (family) {
-            Family.XIAOMI -> "系统的「应用双开」「手机分身」不是工作资料，平行空间不会使用它们；部分 MIUI / HyperOS 版本会拦截第三方创建工作资料，失败时请更新系统或改用系统双开。"
-            Family.HUAWEI -> "EMUI / HarmonyOS（可装 Android 应用的版本）的「应用分身」「隐私空间」与平行空间无关。主路径是进程内虚拟引擎。纯血鸿蒙 NEXT 无法运行本 APK。"
+            Family.XIAOMI -> "系统的「应用双开」「手机分身」不是工作资料，Alter Ego 不会使用它们；部分 MIUI / HyperOS 版本会拦截第三方创建工作资料，失败时请更新系统或改用系统双开。"
+            Family.HUAWEI -> "EMUI / HarmonyOS（可装 Android 应用的版本）的「应用分身」「隐私空间」与 Alter Ego 无关。主路径是进程内虚拟引擎。纯血鸿蒙 NEXT 无法运行本 APK。"
             Family.HONOR -> "MagicOS 的「应用分身」「隐私空间」与工作资料不同；部分版本可能拦截第三方创建工作资料。"
             Family.OPPO -> "ColorOS / OxygenOS / realme UI 的「应用分身」「系统分身」不是工作资料，通常可以共存。"
             Family.VIVO -> "OriginOS / Funtouch 的「应用分身」不是工作资料；部分版本会禁止第三方创建工作资料。"
             Family.SAMSUNG -> "三星「安全文件夹」（Knox）本身就是一个工作资料，已启用时无法再创建；「双开应用」不受影响。"
             Family.MEIZU -> "Flyme 的「应用分身」不是工作资料；请以虚拟引擎为主路径。"
             Family.STOCK -> if (rom == "pixel") {
-                "Pixel 使用系统工作资料。平行空间的主路径仍然是进程内虚拟引擎。"
+                "Pixel 使用系统工作资料。Alter Ego 的主路径仍然是进程内虚拟引擎。"
             } else {
                 ""
             }
@@ -696,7 +696,7 @@ object OemAdapter {
         "harmony" to isHarmony,
         "androidAppsOk" to !isHarmonyNext,
         "harmonyNote" to when {
-            isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，平行空间无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
+            isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，Alter Ego 无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
             isHarmony || rom == "emui" || rom == "magicos" -> "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里打开悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面和电池白名单。"
             else -> ""
         },
@@ -789,7 +789,7 @@ object OemAdapter {
         val detail = when {
             on -> "已开启。只有你点「填入」时，才会把用户名和密码写入当前输入框。"
             killed -> "系统可能把无障碍服务关掉了。一键填入会改成复制到剪贴板。可以重新开启。"
-            else -> "未开启时，填入会复制到剪贴板。请开启「平行空间」无障碍服务后即可一键填入。"
+            else -> "未开启时，填入会复制到剪贴板。请开启「Alter Ego」无障碍服务后即可一键填入。"
         }
         return Check("accessibility", "无障碍填入", status, detail, true)
     }
@@ -814,7 +814,7 @@ object OemAdapter {
             Family.XIAOMI -> " HyperOS 还要在电池策略里选「无限制」。"
             Family.HUAWEI, Family.HONOR -> " 华为 / 荣耀还要允许后台活动。"
             Family.OPPO, Family.VIVO -> " ColorOS / OriginOS 建议同时允许后台运行。"
-            Family.SAMSUNG -> " One UI 可在「不受监视的应用程序」里加入平行空间。"
+            Family.SAMSUNG -> " One UI 可在「不受监视的应用程序」里加入 Alter Ego 。"
             Family.MEIZU -> " Flyme 建议允许后台运行。"
             Family.STOCK -> ""
         }
@@ -852,13 +852,13 @@ object OemAdapter {
         }
         val status = if (restricted) "warn" else "unknown"
         val detail = when (family) {
-            Family.XIAOMI -> "无法直接读取自启动开关。请在 HyperOS / MIUI 的自启动管理里允许平行空间。"
+            Family.XIAOMI -> "无法直接读取自启动开关。请在 HyperOS / MIUI 的自启动管理里允许 Alter Ego 。"
             Family.HUAWEI -> "HarmonyOS / EMUI 请在应用启动管理里改为手动管理，并允许后台活动。"
             Family.HONOR -> "MagicOS 请在应用启动管理里允许自启动和后台活动。"
-            Family.OPPO -> "ColorOS 请在自启动管理和后台耗电里允许平行空间。"
-            Family.VIVO -> "OriginOS 请在「后台弹出」和自启动里允许平行空间。权限页打不开时会回到应用详情。"
-            Family.SAMSUNG -> "One UI 请在电池里把平行空间设为不受限。"
-            Family.MEIZU -> "Flyme 请在后台管理里允许平行空间。"
+            Family.OPPO -> "ColorOS 请在自启动管理和后台耗电里允许 Alter Ego 。"
+            Family.VIVO -> "OriginOS 请在「后台弹出」和自启动里允许 Alter Ego 。权限页打不开时会回到应用详情。"
+            Family.SAMSUNG -> "One UI 请在电池里把 Alter Ego 设为不受限。"
+            Family.MEIZU -> "Flyme 请在后台管理里允许 Alter Ego 。"
             Family.STOCK -> ""
         } + if (restricted) " 系统报告后台已被限制。" else ""
         return Check("autostart", "自启动与后台", status, detail, true)
@@ -1103,7 +1103,7 @@ object OemAdapter {
         return when (family) {
             Family.XIAOMI -> listOf(
                 cn("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
-                    .putExtra("package_name", p).putExtra("package_label", "平行空间"),
+                    .putExtra("package_name", p).putExtra("package_label", "Alter Ego"),
                 cn("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"),
             )
             Family.HUAWEI -> listOf(

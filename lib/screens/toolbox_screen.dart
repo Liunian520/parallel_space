@@ -75,7 +75,7 @@ Future<void> maybeShowA11yGuide(BuildContext context) async {
     builder: (ctx) => AlertDialog(
       title: const Text('开启一键填入'),
       content: const Text(
-        '打开「平行空间」无障碍服务后，点「一键填入」会自动写入当前登录框的账号和密码。\n\n'
+        '打开「Alter Ego」无障碍服务后，点「一键填入」会自动写入当前登录框的账号和密码。\n\n'
         '我们不会记录按键，也不会保存你在其他应用里输入的内容，只在你点填入时读取当前窗口。\n\n'
         '部分应用（游戏、银行、使用私有控件或加固的登录页）可能填不进去，这时可以用「复制账号 / 复制密码」后长按粘贴。',
       ),
@@ -192,7 +192,7 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                       ? '● 已开启，可一键写入登录框'
                       : _a11yRestricted
                           ? '● 未开启：需先在应用详情里「允许受限制的设置」，点此按步骤引导'
-                          : '● 未开启：点此直达「平行空间」无障碍开关；未开时填入改为复制',
+                          : '● 未开启：点此直达「Alter Ego」无障碍开关；未开时填入改为复制',
                   trailing: Container(
                     width: 10,
                     height: 10,

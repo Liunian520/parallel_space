@@ -22,7 +22,7 @@ import java.io.File
  *
  * 关键点：MIUI / HyperOS 的“应用双开”（XSpace，userId 999；其他厂商的双开空间类似）同样会出现在 LauncherApps.getProfiles 里，
  * 1.1.x 把它当成了工作资料，导致“打开分身”实际启动的是系统双开的应用（并弹出系统的分身选择）。
- * 这里只接受“由平行空间创建的托管资料”。
+ * 这里只接受“由 Alter Ego 创建的托管资料”。
  */
 object WorkProfile {
 
@@ -82,12 +82,12 @@ object WorkProfile {
     private fun rememberedSerial(ctx: Context): Long = prefs(ctx).getLong("serial", -1L)
 
     /**
-     * 判断托管资料是否归平行空间所有。个人空间进程无法直接读取其他用户的资料所有者
+     * 判断托管资料是否归 Alter Ego 所有。个人空间进程无法直接读取其他用户的资料所有者
      * （isProfileOwnerApp 只对当前用户有效），因此按可靠程度依次判断：
      *  1. 创建成功时记录的用户序列号；
      *  2. 资料所有者添加的跨资料入口（WORK_OP 转发）能解析；
      *  3. 托管资料中装有本 App —— 托管资料只预装系统应用，第三方 App 只能由资料所有者装入，
-     *     而由平行空间创建时资料所有者正是平行空间本身。
+     *     而由 Alter Ego 创建时资料所有者正是 Alter Ego 本身。
      * 1.2.0 只用了第 2 条：HyperOS 上资料所有者的初始化（PROFILE_PROVISIONING_COMPLETE 广播）
      * 没有执行 / 转发未生效时，自己的资料就被误判为“其他工作资料”。
      */
@@ -104,7 +104,7 @@ object WorkProfile {
     @Volatile
     private var cached: Pair<Long, UserHandle?>? = null
 
-    /** 由平行空间创建的工作资料；不存在返回 null。缓存 2 秒（批量取图标时避免重复查询系统服务）。 */
+    /** 由 Alter Ego 创建的工作资料；不存在返回 null。缓存 2 秒（批量取图标时避免重复查询系统服务）。 */
     fun ourUser(ctx: Context): UserHandle? {
         val now = android.os.SystemClock.elapsedRealtime()
         cached?.let { (t, u) -> if (now - t < 2000) return u }

@@ -1,13 +1,15 @@
-# 平行空间
+# Alter Ego
 
-[![version](https://img.shields.io/badge/version-1.3.20-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+> 中文名：**平行空间** · 应用分身 / 双开
+
+[![version](https://img.shields.io/badge/version-1.3.21-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-在本机再开一份应用。界面是毛玻璃和 Material You，文字是简体中文。
+在本机再开一份应用（应用分身）。产品名 **Alter Ego**，中文也叫平行空间。界面是毛玻璃和 Material You，文字是简体中文。
 
-平行空间用进程内虚拟引擎（NewBlackbox / Bcore）创建和启动分身。HyperOS 上工作资料经常不可用，所以虚拟引擎是唯一主路径，工作资料只作为遗留回退。
+Alter Ego 用进程内虚拟引擎（NewBlackbox / Bcore）创建和启动分身。HyperOS 上工作资料经常不可用，所以虚拟引擎是唯一主路径，工作资料只作为遗留回退。
 
 ## 功能特性
 
@@ -48,7 +50,7 @@ Android 14 及以上需要声明前台服务类型：虚拟定位、工具箱悬
 
 1. 用下面的命令打出 release APK，或使用你信任的已签名安装包。
 2. 在系统里允许安装未知来源应用。
-3. 安装后打开「平行空间」。HyperOS 上如果提示引擎未就绪，到 **设置 → 机型适配检查** 看进程名和电池项。
+3. 安装后打开「Alter Ego」。HyperOS 上如果提示引擎未就绪，到 **设置 → 机型适配检查** 看进程名和电池项。
 4. 要用分身里的悬浮小窗：到 **设置 → 工具箱** 打开开关，并允许悬浮窗。一键填入需要再打开无障碍服务；不打开也可以，密码会复制到剪贴板。
 
 ## 构建
@@ -62,7 +64,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.20+12320**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.21+12321**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -70,7 +72,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.20`（versionCode `12320`），下一次是 `1.3.21`（`12321`）。
+只把修订号加 1：当前 `1.3.21`（versionCode `12321`），下一次是 `1.3.22`（`12322`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 

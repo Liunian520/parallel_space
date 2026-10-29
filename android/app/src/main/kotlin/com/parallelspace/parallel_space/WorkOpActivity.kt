@@ -8,8 +8,8 @@ import android.os.Build
 import android.os.Bundle
 
 /**
- * 运行在工作资料内的无界面 Activity：接收个人空间平行空间发来的操作并以资料所有者身份执行。
- * 受 signature 级权限保护，只有同签名的平行空间可以调用。
+ * 运行在工作资料内的无界面 Activity：接收个人空间 Alter Ego 发来的操作并以资料所有者身份执行。
+ * 受 signature 级权限保护，只有同签名的 Alter Ego 可以调用。
  */
 class WorkOpActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {

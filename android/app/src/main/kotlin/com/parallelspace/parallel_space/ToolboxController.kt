@@ -162,7 +162,7 @@ object ToolboxController {
         fun doCopy(): Boolean {
             fun write(target: Context, tag: String): Boolean = try {
                 val cm = target.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("平行空间", text))
+                cm.setPrimaryClip(ClipData.newPlainText("Alter Ego", text))
                 ToolboxCrashLog.append(app, "INFO", "copyText ok via=$tag len=${text.length}")
                 true
             } catch (t: Throwable) {
@@ -277,7 +277,7 @@ object ToolboxController {
                     try {
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "平行空间工具箱日志")
+                            putExtra(Intent.EXTRA_SUBJECT, "Alter Ego 工具箱日志")
                             putExtra(Intent.EXTRA_TEXT, body)
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }

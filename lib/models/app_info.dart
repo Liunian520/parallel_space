@@ -41,7 +41,7 @@ class AppInfo {
   /// 在工作资料中被系统暂停（冻结）。
   final bool suspended;
 
-  /// 个人空间应用：是否已存在于平行空间的工作资料中。
+  /// 个人空间应用：是否已存在于 Alter Ego 的工作资料中。
   final bool inWork;
 
   /// 虚拟引擎用户 id：同一应用的第 N 个分身（0 = 第一个）。

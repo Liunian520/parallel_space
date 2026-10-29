@@ -20,7 +20,7 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- 仅同签名的平行空间（个人空间 ↔ 工作资料）可调用跨资料操作 -->
+    <!-- 仅同签名的 Alter Ego（个人空间 ↔ 工作资料）可调用跨资料操作 -->
     <permission
         android:name="com.parallelspace.parallel_space.permission.WORK_OP"
         android:protectionLevel="signature" />
@@ -30,7 +30,7 @@
     <uses-feature android:name="android.software.device_admin" android:required="false" />
 
     <application
-        android:label="平行空间"
+        android:label="Alter Ego"
         android:name=".ParallelSpaceApp"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
@@ -187,7 +187,7 @@
         <receiver
             android:name=".CloneWidgetProvider"
             android:exported="true"
-            android:label="平行空间">
+            android:label="Alter Ego">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

@@ -37,7 +37,7 @@ void main() {
       FlutterError.onError = old;
       expect(errors, isEmpty, reason: errors.join('\n---\n'));
       expect(find.byType(ErrorCard), findsNothing);
-      expect(find.text(seed.key == 'v1.0 legacy' ? '我的空间' : '平行空间'), findsWidgets);
+      expect(find.text(seed.key == 'v1.0 legacy' ? '我的空间' : 'Alter Ego'), findsWidgets);
     });
   }
   }

@@ -1077,7 +1077,7 @@ class ToolboxOverlayService : Service() {
                 gravity = Gravity.CENTER
             })
             addView(TextView(this@ToolboxOverlayService).apply {
-                text = "请到平行空间 App 的「密码本」里添加。工具箱只负责查看、一键填入和复制。"
+                text = "请到 Alter Ego App 的「密码本」里添加。工具箱只负责查看、一键填入和复制。"
                 setTextColor(pal.sub)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 gravity = Gravity.CENTER
@@ -1519,8 +1519,8 @@ class ToolboxOverlayService : Service() {
         toast(when (r) {
             "on" -> "无障碍已开启"
             "restricted" -> "请先点右上角「⋮ → 允许受限制的设置」，再回来开启无障碍"
-            "details" -> "请打开「平行空间」无障碍开关"
-            "list" -> "请在列表中找到「平行空间」并开启"
+            "details" -> "请打开「Alter Ego」无障碍开关"
+            "list" -> "请在列表中找到「Alter Ego」并开启"
             else -> "打开失败，请到 设置 → 无障碍 中开启"
         })
     }

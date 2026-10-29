@@ -274,7 +274,7 @@ class _SetupBannerState extends State<_SetupBanner> {
         builder: (ctx) => AlertDialog(
           title: const Text('需要跨空间授权'),
           content: Text(
-            '系统未允许平行空间在个人空间与工作资料之间启动操作通道'
+            '系统未允许 Alter Ego 在个人空间与工作资料之间启动操作通道'
             '（CrossProfileApps.canInteractAcrossProfiles = false）。\n\n'
             '请先点「授权跨空间」，在系统页允许关联后返回再试。\n\n详情：$detail',
           ),

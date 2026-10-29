@@ -69,7 +69,7 @@ class _UsageScreenState extends State<UsageScreen> with WidgetsBindingObserver {
                   const GlassTile(
                     icon: Icons.query_stats_rounded,
                     title: '开启“使用情况访问权限”',
-                    subtitle: '系统设置 → 应用 → 特殊应用权限 → 使用情况访问权限 → 平行空间 → 允许。返回后自动刷新。',
+                    subtitle: '系统设置 → 应用 → 特殊应用权限 → 使用情况访问权限 → Alter Ego → 允许。返回后自动刷新。',
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
