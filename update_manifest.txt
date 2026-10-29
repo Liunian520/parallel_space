@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.21",
-  "versionCode": 14321,
-  "apkUrl": "https://link.liunianai.cn/f/disk/jromvuebnwh9wyouafn90qgexq/parallel_space_v1.3.21_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/st6j6z",
-  "sha256": "60c8475678ef1f33d66fe0d227955d5f5b3af6bf741029619b64061dd648dacf",
-  "size": 21479660,
-  "notes": "1.3.21：产品名改为 Alter Ego；全新双开毛玻璃启动图标；applicationId 不变。",
-  "publishedAt": "2026-10-29T10:26:23+08:00"
+  "versionName": "1.3.22",
+  "versionCode": 14322,
+  "apkUrl": "https://link.liunianai.cn/f/disk/bqjwignkierheswqbiqhqf7orv/parallel_space_v1.3.22_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/tbr6nt",
+  "sha256": "975c1e8a06055da2ea1ae62446c893f96b1c820d18530f9bd0458c75eef31d12",
+  "size": 21556380,
+  "notes": "1.3.22：启动图标改为选项 A（深蓝双开 glyph）；产品名 Alter Ego 不变。",
+  "publishedAt": "2026-10-29T10:42:57+08:00"
 }
