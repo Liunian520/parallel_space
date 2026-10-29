@@ -1,6 +1,17 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.24（versionCode 12324），下一次是 1.3.25（12325）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.25（versionCode 12325），下一次是 1.3.26（12326）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.25] - 2026-10-29
+
+### 修复
+
+- **启动图标恢复选项 A 圆角紫圈**：1.3.24 对画布白角 flood-fill 破坏了圆角「圈」。现以用户附件为唯一源图，**仅等比缩放**写入 `flutter_launcher_icons`（保留白底画布与圆角紫框）；自适应背景取紫板内取样色，**不做 flood-fill / 去白边 / 重绘**。
+- 首页标题「平行空间」→ Alter Ego 的 prefs 迁移保留。
+
+### 其他
+
+- 版本 `1.3.25+12325`。
 
 ## [1.3.24] - 2026-10-29
 
