@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.20",
-  "versionCode": 14320,
-  "apkUrl": "https://link.liunianai.cn/f/disk/q7mxejluw0ousujdifnfs9xlnj/parallel_space_v1.3.20_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/5k6w5n",
-  "sha256": "80cd13e84430ce5dde229d73852b21db25e88c6475dd12b8fb8a705204f11504",
-  "size": 21281059,
-  "notes": "1.3.20：加深 OPPO/一加/realme、vivo/iQOO、三星、魅族、Pixel 权限跳转；电池白名单全品牌；机型适配页品牌指引与「去设置」。",
-  "publishedAt": "2026-10-29T09:14:31+08:00"
+  "versionName": "1.3.21",
+  "versionCode": 14321,
+  "apkUrl": "https://link.liunianai.cn/f/disk/jromvuebnwh9wyouafn90qgexq/parallel_space_v1.3.21_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/st6j6z",
+  "sha256": "60c8475678ef1f33d66fe0d227955d5f5b3af6bf741029619b64061dd648dacf",
+  "size": 21479660,
+  "notes": "1.3.21：产品名改为 Alter Ego；全新双开毛玻璃启动图标；applicationId 不变。",
+  "publishedAt": "2026-10-29T10:26:23+08:00"
 }
