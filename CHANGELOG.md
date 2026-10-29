@@ -1,6 +1,17 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.21（versionCode 12321），下一次是 1.3.22（12322）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.22（versionCode 12322），下一次是 1.3.23（12323）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.22] - 2026-10-29
+
+### 品牌
+
+- **启动图标改为选项 A**：深蓝圆角底板 + 白/青双层方块与紫青叠影 glyph，更清晰表达「应用分身 / 双开」；按自适应图标流程更新各密度 mipmap 与 foreground/background。
+- 产品名仍为 **Alter Ego**（`applicationId` 不变）。
+
+### 其他
+
+- 版本 `1.3.22+12322`。
 
 ## [1.3.21] - 2026-10-29
 
