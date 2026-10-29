@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.19 → 12319', () {
-    expect(kAppVersionName, '1.3.19');
-    expect(kAppVersionCode, 12319);
-    expect(encodeVersionCode(1, 3, 19), kAppVersionCode);
-    expect(versionCodeFromName('1.3.19'), 12319);
-    expect(encodeVersionCode(1, 3, 19), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 19), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 19), greaterThan(12318));
+  test('版本号只加最后一位：1.3.20 → 12320', () {
+    expect(kAppVersionName, '1.3.20');
+    expect(kAppVersionCode, 12320);
+    expect(encodeVersionCode(1, 3, 20), kAppVersionCode);
+    expect(versionCodeFromName('1.3.20'), 12320);
+    expect(encodeVersionCode(1, 3, 20), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 20), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 20), greaterThan(12319));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -114,7 +114,7 @@ void main() {
     expect(find.byType(CompatScreen), findsOneWidget);
     expect(find.text('悬浮窗'), findsOneWidget);
     expect(find.text('64 位'), findsOneWidget);
-    await t.tap(find.byTooltip('前往设置').first);
+    await t.tap(find.text('去设置').first);
     await settle(t);
     expect(native.methods, contains('compatOpen'));
 
@@ -139,7 +139,7 @@ void main() {
     await t.scrollUntilVisible(find.text('本项目开源'), 400);
     expect(find.textContaining('流年似水'), findsOneWidget);
     expect(find.text('https://github.com/Liunian520/parallel_space'), findsOneWidget);
-    expect(find.textContaining('1.3.19'), findsWidgets);
+    expect(find.textContaining('1.3.20'), findsWidgets);
   });
 
   testWidgets('密码本可以直接添加、分组和删除', (t) async {

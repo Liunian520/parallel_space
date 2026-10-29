@@ -1,6 +1,23 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.19（versionCode 12319），下一次是 1.3.20（12320）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.20（versionCode 12320），下一次是 1.3.21（12321）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.20] - 2026-10-29
+
+### 机型适配（全品牌加深）
+
+- **目标**：在已有小米 HyperOS、华为/荣耀（可装 Android 的鸿蒙）基础上，补齐 **OPPO / 一加 / realme、vivo / iQOO、三星 One UI、魅族 Flyme、Pixel / 原生** 的权限跳转与手动路径，让各品牌尽量「能装就能用」。
+- **悬浮窗**：ColorOS / OxygenOS 增加 PermissionTop / PermissionManager / 一加关联启动入口；vivo 增加 iQOO 权限详情；三星优先系统悬浮窗页并兼容国行智能管理器；魅族增加后台相关页。
+- **自启动 / 后台**：OPPO 补 oplus 启动列表、耗电异常、一加 ChainLaunch；vivo 补耗电行为引擎；三星补多版 BatteryActivity（含 sm_cn）；魅族补 SmartBG。
+- **电池白名单**：`batteryOemIntents` 覆盖全品牌（小米 HiddenApps、ColorOS 耗电、vivo 白名单、三星电池、魅族耗电），失败再回退系统「忽略优化」。
+- **后台弹出界面**：OPPO/vivo 跳转更准；各品牌手动路径写全。
+- **无障碍**：OPPO/ColorOS、vivo、三星、魅族增加「已安装的服务」等高亮候选。
+- **机型适配检查页**：顶部显示当前品牌的 `brandTip`；每项改为「去设置」按钮；跳转失败时展示手动路径；状态点说明更清晰。
+- **不支持**：纯血鸿蒙 NEXT、iOS（与 1.3.19 说明一致）。
+
+### 其他
+
+- 版本 `1.3.20+12320`。
 
 ## [1.3.19] - 2026-10-28
 

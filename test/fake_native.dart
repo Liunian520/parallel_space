@@ -210,6 +210,9 @@ class FakeNative {
           'sdk': 35,
           'release': '15',
           'abi': 'arm64-v8a',
+          'brandTip': rom == 'hyperos' ? 'HyperOS：请打开悬浮窗、无障碍、自启动、后台弹出。' : '请打开悬浮窗与无障碍。',
+          'harmonyNext': false,
+          'harmonyNote': '',
           'items': [
             {'id': 'overlay', 'title': '悬浮窗', 'status': overlayGranted ? 'ok' : 'off', 'detail': '尚未允许显示悬浮窗', 'canOpen': true},
             {'id': 'accessibility', 'title': '无障碍填入', 'status': 'off', 'detail': '未开启', 'canOpen': true},

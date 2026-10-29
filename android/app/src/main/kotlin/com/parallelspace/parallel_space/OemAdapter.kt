@@ -21,6 +21,7 @@ import androidx.core.net.toUri
 /**
  * 厂商（ROM）适配集中处理：识别、桌面快捷方式、自启动 / 后台、后台弹出、电池优化、权限页跳转。
  * 1.3.19：补强华为 HarmonyOS / EMUI、荣耀 MagicOS（可装 Android 应用）的悬浮窗、启动管理、后台弹出、耗电跳转；纯血 NEXT 明确不支持。
+ * 1.3.20：加深 OPPO/一加/realme、vivo/iQOO、三星、魅族、Pixel 与小米的权限链；电池 OEM 全品牌；机型页 brandTip。
  *
  * 跳转一律不预检 resolveActivity（Android 11+ 包可见性会误判），逐个 try/catch，
  * 最后落到标准系统页和应用详情。Activity 上下文优先不加 NEW_TASK，避免 HyperOS
@@ -254,23 +255,43 @@ object OemAdapter {
             Family.HUAWEI to "battery", Family.HONOR to "battery" -> "设置 → 电池 → 更多电池设置 / 应用启动管理 → 平行空间 → 不优化或手动管理并允许后台"
             Family.HUAWEI to "popup", Family.HONOR to "popup" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 后台弹出界面（必须允许，否则从工具箱/快捷方式打开分身会被拦）"
             Family.HUAWEI to "shortcut", Family.HONOR to "shortcut" -> "设置 → 应用和服务 → 应用管理 → 平行空间 → 权限 → 创建桌面快捷方式"
+            Family.XIAOMI to "popup" -> "设置 → 应用设置 → 应用管理 → 平行空间 → 权限管理 → 后台弹出界面"
+            Family.XIAOMI to "notification" -> "设置 → 通知与控制中心 → 应用通知 → 平行空间"
             Family.OPPO to "overlay" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 悬浮窗"
-            Family.OPPO to "accessibility" -> "设置 → 其他设置 → 无障碍 → 平行空间"
-            Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许平行空间"
+            Family.OPPO to "accessibility" -> "设置 → 其他设置 / 辅助功能 → 无障碍 → 已下载的服务 → 平行空间；灰开关先「允许受限制的设置」"
+            Family.OPPO to "autostart" -> "设置 → 应用 → 自启动管理 → 允许平行空间；一加还可在「关联启动」里允许"
+            Family.OPPO to "battery" -> "设置 → 电池 → 应用耗电管理 / 耗电异常优化 → 平行空间 → 允许后台耗电或不优化"
+            Family.OPPO to "popup" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 后台弹出界面（或关联启动）"
+            Family.OPPO to "shortcut" -> "设置 → 应用 → 应用管理 → 平行空间 → 权限 → 创建桌面快捷方式"
+            Family.OPPO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → 平行空间"
             Family.VIVO to "overlay" -> "设置 → 应用与权限 → 权限管理 → 权限 → 悬浮窗 → 平行空间"
-            Family.VIVO to "accessibility" -> "设置 → 快捷与辅助 → 无障碍 → 平行空间"
-            Family.VIVO to "autostart" -> "设置 → 电池 → 后台耗电管理 / 权限 → 自启动 → 平行空间"
+            Family.VIVO to "accessibility" -> "设置 → 快捷与辅助 / 更多设置 → 无障碍 → 平行空间；灰开关先允许受限制的设置"
+            Family.VIVO to "autostart" -> "设置 → 电池 → 后台耗电管理 → 平行空间 → 允许高耗电；权限 → 自启动 / 关联启动"
+            Family.VIVO to "battery" -> "设置 → 电池 → 后台耗电管理 → 平行空间 → 允许高耗电与后台运行"
+            Family.VIVO to "popup" -> "设置 → 应用与权限 → 权限管理 → 权限 → 后台弹出界面 → 平行空间"
+            Family.VIVO to "shortcut" -> "设置 → 应用与权限 → 权限管理 → 权限 → 桌面快捷方式 → 平行空间"
+            Family.VIVO to "notification" -> "设置 → 通知与状态栏 → 应用通知管理 → 平行空间"
             Family.SAMSUNG to "overlay" -> "设置 → 应用 → 平行空间 → 在其他应用上层显示"
             Family.SAMSUNG to "accessibility" -> "设置 → 辅助功能 → 已安装的应用 → 平行空间"
-            Family.SAMSUNG to "battery" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用"
+            Family.SAMSUNG to "battery" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用 → 添加平行空间"
+            Family.SAMSUNG to "autostart" -> "设置 → 电池和设备维护 → 电池 → 后台使用限制 → 把平行空间设为不受限"
+            Family.SAMSUNG to "popup" -> "设置 → 应用 → 平行空间 → 其他权限 / 允许出现在顶部；并检查电池后台限制"
+            Family.SAMSUNG to "shortcut" -> "设置 → 应用 → 平行空间 → 其他权限 / 主屏幕快捷方式"
+            Family.SAMSUNG to "notification" -> "设置 → 通知 → 应用通知 → 平行空间"
             Family.MEIZU to "overlay" -> "设置 → 应用管理 → 平行空间 → 权限管理 → 悬浮窗"
             Family.MEIZU to "accessibility" -> "设置 → 辅助功能 → 无障碍 → 平行空间"
+            Family.MEIZU to "autostart" -> "设置 → 电量管理 / 应用管理 → 后台管理 → 允许平行空间"
+            Family.MEIZU to "battery" -> "设置 → 电量管理 → 耗电保护 / 后台管理 → 平行空间 → 允许"
+            Family.MEIZU to "popup" -> "设置 → 应用管理 → 平行空间 → 权限 → 后台弹出相关项"
+            Family.MEIZU to "shortcut" -> "设置 → 应用管理 → 平行空间 → 权限 → 桌面快捷方式"
             else -> when (kind) {
                 "overlay" -> "设置 → 应用 → 特殊应用权限 → 显示在其他应用的上层 → 平行空间"
                 "accessibility" -> "设置 → 无障碍 → 已下载的应用 / 已安装的服务 → 平行空间"
                 "battery" -> "设置 → 应用 → 平行空间 → 电池 → 不优化"
                 "notification" -> "设置 → 应用 → 平行空间 → 通知"
                 "shortcut" -> "设置 → 应用 → 平行空间 → 权限"
+                "popup" -> "设置 → 应用 → 平行空间 → 权限 → 后台弹出界面（名称因品牌而异）"
+                "autostart" -> "设置 → 应用 → 平行空间 → 电池 / 自启动"
                 else -> "设置 → 应用 → 平行空间"
             }
         }
@@ -326,19 +347,26 @@ object OemAdapter {
                 "oplus:FloatWindowListActivity",
                 "coloros:sysfloatwindow.FloatWindowListActivity",
                 "oppo.safe:FloatWindowListActivity",
+                "oplus:PermissionTopActivity",
+                "coloros:PermissionManagerActivity",
+                "oneplus:ChainLaunchAppListActivity",
             )
             Family.VIVO -> listOf(
                 "vivo:SoftPermissionDetailActivity",
                 "iqoo:FloatWindowManager",
                 "vivo:PurviewTabActivity",
+                "iqoo:SoftPermissionDetailActivity",
             )
             Family.SAMSUNG -> listOf(
+                "ACTION_MANAGE_OVERLAY_PERMISSION:package",
+                "samsung.sm_cn:BatteryActivity",
                 "samsung:SmartManagerDashBoardActivity",
                 "samsung.lool:BatteryActivity",
             )
             Family.MEIZU -> listOf(
                 "meizu:AppSecurityActivity",
                 "meizu:PermissionActivity",
+                "meizu:SmartBGActivity",
             )
             Family.STOCK -> emptyList()
         }
@@ -381,16 +409,25 @@ object OemAdapter {
             Family.OPPO -> listOf(
                 "coloros:StartupAppListActivity",
                 "coloros:permission.startup.StartupAppListActivity",
-                "oplus:PowerUsageModelActivity",
                 "oppo.safe:StartupAppListActivity",
+                "oplus:StartupAppListActivity",
+                "oplus:PowerUsageModelActivity",
+                "coloros:oppoguardelf.PowerUsageModelActivity",
+                "oneplus:ChainLaunchAppListActivity",
             )
             Family.VIVO -> listOf(
                 "vivo:BgStartUpManagerActivity",
                 "iqoo:BgStartUpManager",
                 "iqoo:AddWhiteListActivity",
+                "vivo:ExcessivePowerManagerActivity",
             )
-            Family.SAMSUNG -> listOf("samsung.lool:BatteryActivity", "samsung.sm:BatteryActivity")
-            Family.MEIZU -> listOf("meizu:SmartPowerActivity", "meizu:AppSecurityActivity")
+            Family.SAMSUNG -> listOf(
+                "samsung.lool:BatteryActivity",
+                "samsung.lool:ui.battery.BatteryActivity",
+                "samsung.sm:BatteryActivity",
+                "samsung.sm_cn:BatteryActivity",
+            )
+            Family.MEIZU -> listOf("meizu:SmartPowerActivity", "meizu:AppSecurityActivity", "meizu:SmartBGActivity")
             Family.STOCK -> emptyList()
         }
         return oem + listOf("APPLICATION_DETAILS", "SETTINGS")
@@ -488,21 +525,30 @@ object OemAdapter {
         Family.OPPO -> listOf(
             cn("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
             cn("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
-            cn("com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"),
             cn("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
+            cn("com.oplus.safecenter", "com.oplus.safecenter.startupapp.StartupAppListActivity"),
+            cn("com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"),
+            cn("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"),
+            cn("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
         )
         Family.VIVO -> listOf(
             cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
             cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"),
             cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
+            cn("com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExcessivePowerManagerActivity"),
+            cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.PowerManagerActivity"),
         )
         Family.SAMSUNG -> listOf(
             cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+            cn("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
             cn("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+            cn("com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+            cn("com.samsung.android.sm_cn", "com.samsung.android.sm.ui.battery.BatteryActivity"),
         )
         Family.MEIZU -> listOf(
             cn("com.meizu.safe", "com.meizu.safe.powerui.PowerAppPermissionActivity"),
             cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity"),
+            cn("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity"),
         )
         Family.STOCK -> emptyList()
     }
@@ -525,6 +571,22 @@ object OemAdapter {
             "requested"
         } else {
             "error"
+        }
+    }
+
+    /** 机型适配页顶部提示：按品牌列出建议打开的权限。 */
+    fun brandTip(): String = when (family) {
+        Family.XIAOMI -> "HyperOS / MIUI：请依次打开悬浮窗、无障碍、自启动、后台弹出界面，并把电池策略设为「无限制」。"
+        Family.HUAWEI -> "HarmonyOS / EMUI（可装 Android）：悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面、电池白名单。"
+        Family.HONOR -> "MagicOS：与华为同系，请打开悬浮窗、启动管理、后台弹出、电池白名单。"
+        Family.OPPO -> "ColorOS / OxygenOS / realme：悬浮窗、自启动、关联启动、后台弹出、耗电管理允许后台。"
+        Family.VIVO -> "OriginOS / Funtouch：悬浮窗、自启动、后台弹出界面、后台耗电「允许高耗电」。"
+        Family.SAMSUNG -> "One UI：系统悬浮窗 + 电池「永不休眠的应用」；安全文件夹已启用时不影响虚拟引擎主路径。"
+        Family.MEIZU -> "Flyme：悬浮窗、后台管理、耗电保护允许平行空间。"
+        Family.STOCK -> if (rom == "pixel") {
+            "Pixel：打开「显示在其他应用上层」与无障碍即可；电池优化建议关闭。"
+        } else {
+            "请打开悬浮窗与无障碍；若分身打不开，再到应用详情检查电池与后台限制。"
         }
     }
 
@@ -638,6 +700,7 @@ object OemAdapter {
             isHarmony || rom == "emui" || rom == "magicos" -> "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里打开悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面和电池白名单。"
             else -> ""
         },
+        "brandTip" to brandTip(),
         "overlayHint" to manualHint("overlay"),
         "accessibilityHint" to manualHint("accessibility"),
         "items" to checks(ctx).map {
@@ -959,20 +1022,33 @@ object OemAdapter {
                 cn("com.oplus.safecenter", "com.oplus.safecenter.sysfloatwindow.FloatWindowListActivity"),
                 cn("com.coloros.safecenter", "com.coloros.safecenter.sysfloatwindow.FloatWindowListActivity"),
                 cn("com.oppo.safe", "com.oppo.safe.permission.floatwindow.FloatWindowListActivity"),
+                // ColorOS 13+ / OxygenOS：单应用权限
+                cn("com.oplus.safecenter", "com.oplus.safecenter.permission.PermissionTopActivity"),
+                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity")
+                    .putExtra("packageName", p),
+                // 一加旧版关联启动旁的权限入口
+                cn("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
             )
             Family.VIVO -> listOf(
                 cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
                     .putExtra("packagename", p),
                 cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.FloatWindowManager"),
                 cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity"),
+                cn("com.iqoo.secure", "com.iqoo.secure.safeguard.SoftPermissionDetailActivity")
+                    .putExtra("packagename", p),
             )
             Family.SAMSUNG -> listOf(
+                // One UI 优先走系统悬浮窗页；再试智能管理器
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$p".toUri()),
+                cn("com.samsung.android.sm_cn", "com.samsung.android.sm.ui.battery.BatteryActivity"),
                 cn("com.samsung.android.sm", "com.samsung.android.sm.app.dashboard.SmartManagerDashBoardActivity"),
                 cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+                cn("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
             )
             Family.MEIZU -> listOf(
                 cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity").putExtra("packageName", p),
                 cn("com.meizu.safe", "com.meizu.safe.permission.PermissionActivity"),
+                cn("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity"),
             )
             Family.STOCK -> emptyList()
         }
@@ -1002,32 +1078,68 @@ object OemAdapter {
                 Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
             )
             Family.VIVO -> listOf(
-                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
                 cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
+                    .putExtra("packagename", p),
+                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+                cn("com.iqoo.secure", "com.iqoo.secure.safeguard.SoftPermissionDetailActivity")
                     .putExtra("packagename", p),
             )
             Family.OPPO -> listOf(
-                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity")
+                    .putExtra("packageName", p),
                 cn("com.oplus.safecenter", "com.oplus.safecenter.permission.PermissionTopActivity"),
+                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+                cn("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
             )
+            Family.SAMSUNG, Family.MEIZU, Family.STOCK -> emptyList()
             else -> emptyList()
         }
         return oem + details(ctx)
     }
 
-    /** 华为 / 荣耀电池与耗电页（在系统「忽略优化」之外再试）。 */
-    fun batteryOemIntents(ctx: Context): List<Intent> = when (family) {
-        Family.HUAWEI -> listOf(
-            cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
-            cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
-            cn("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
-        )
-        Family.HONOR -> listOf(
-            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.power.ui.HwPowerManagerActivity"),
-            cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity"),
-            cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
-        )
-        else -> emptyList()
+    /** 各品牌耗电 / 后台白名单页（在系统「忽略电池优化」之外再试）。 */
+    fun batteryOemIntents(ctx: Context): List<Intent> {
+        val p = ctx.packageName
+        return when (family) {
+            Family.XIAOMI -> listOf(
+                cn("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
+                    .putExtra("package_name", p).putExtra("package_label", "平行空间"),
+                cn("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"),
+            )
+            Family.HUAWEI -> listOf(
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            )
+            Family.HONOR -> listOf(
+                cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.power.ui.HwPowerManagerActivity"),
+                cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+                cn("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"),
+            )
+            Family.OPPO -> listOf(
+                cn("com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"),
+                cn("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"),
+                cn("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"),
+                cn("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
+            )
+            Family.VIVO -> listOf(
+                cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
+                cn("com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExcessivePowerManagerActivity"),
+                cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.PowerManagerActivity"),
+            )
+            Family.SAMSUNG -> listOf(
+                cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+                cn("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+                cn("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+                cn("com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+                cn("com.samsung.android.sm_cn", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+            )
+            Family.MEIZU -> listOf(
+                cn("com.meizu.safe", "com.meizu.safe.powerui.PowerAppPermissionActivity"),
+                cn("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity"),
+            )
+            Family.STOCK -> emptyList()
+        }
     }
 
     /** 1.3.16 起由 [A11yJump.intents] 负责；保留供链路展示。 */

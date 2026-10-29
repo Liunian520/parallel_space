@@ -96,5 +96,14 @@ void main() {
     expect(r.harmonyNote, contains('后台弹出'));
     final next = CompatReport.fromMap({'harmonyNext': true, 'harmonyNote': '纯血', 'items': []});
     expect(next.harmonyNext, isTrue);
+    final tip = CompatReport.fromMap({
+      'brandTip': 'ColorOS：请打开悬浮窗',
+      'items': [
+        {'id': 'popup', 'title': '后台弹出界面', 'status': 'unknown', 'detail': '请允许', 'canOpen': true},
+      ],
+    });
+    expect(tip.brandTip, contains('悬浮窗'));
+    expect(tip.items.single.id, 'popup');
+    expect(tip.items.single.canOpen, isTrue);
   });
 }

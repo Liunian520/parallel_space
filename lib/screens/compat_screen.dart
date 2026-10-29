@@ -47,6 +47,7 @@ class CompatReport {
     required this.items,
     this.harmonyNext = false,
     this.harmonyNote = '',
+    this.brandTip = '',
   });
 
   final String romLabel;
@@ -64,6 +65,9 @@ class CompatReport {
   /// 给用户看的鸿蒙说明（可空）。
   final String harmonyNote;
 
+  /// 当前品牌建议打开的权限清单。
+  final String brandTip;
+
   static CompatReport fromMap(Map? raw) {
     final itemsRaw = raw?['items'];
     return CompatReport(
@@ -76,6 +80,7 @@ class CompatReport {
       abi: raw?['abi'] is String ? raw!['abi'] as String : '',
       harmonyNext: raw?['harmonyNext'] == true,
       harmonyNote: raw?['harmonyNote'] is String ? raw!['harmonyNote'] as String : '',
+      brandTip: raw?['brandTip'] is String ? raw!['brandTip'] as String : '',
       items: [
         if (itemsRaw is List) ...itemsRaw.map(CompatItem.fromMap).nonNulls,
       ],
@@ -134,12 +139,13 @@ class _CompatScreenState extends State<CompatScreen> with WidgetsBindingObserver
     final code = NativeBridge.compatOpenCode(r);
     final hint = NativeBridge.compatOpenHint(r);
     showGlassSnack(context, switch (code) {
-      'rom' => '已打开厂商设置',
-      'details' => '已打开应用详情',
+      'rom' || 'list' => '已打开厂商 / 系统设置页',
+      'details' => '已打开应用详情（可找权限与后台弹出）',
       'settings' => '已打开系统设置',
-      'ok' || 'requested' => '已跳转',
-      'error' => hint.isEmpty ? '没有打开设置页' : hint,
-      _ => '已尝试打开',
+      'restricted' => hint.isEmpty ? '请先允许受限制的设置' : hint,
+      'ok' || 'requested' || 'on' => '已跳转',
+      'error' => hint.isEmpty ? '没有打开设置页，请按提示手动操作' : hint,
+      _ => hint.isNotEmpty ? hint : '已尝试打开',
     });
     await _load();
   }
@@ -199,6 +205,24 @@ class _CompatScreenState extends State<CompatScreen> with WidgetsBindingObserver
                   ),
                   const SizedBox(height: 10),
                 ],
+                if (report.brandTip.isNotEmpty) ...[
+                  Glass(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(Icons.tips_and_updates_outlined, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(report.brandTip, style: tt.bodyMedium)),
+                    ]),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  child: Text(
+                    '下面每一项都会智能跳到对应设置页；打不开时会提示手动路径。绿点已就绪，橙点建议处理，红点未开启。',
+                    style: tt.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ),
                 for (final item in report.items) ...[
                   Glass(
                     padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
@@ -215,10 +239,10 @@ class _CompatScreenState extends State<CompatScreen> with WidgetsBindingObserver
                         ]),
                       ),
                       if (item.canOpen)
-                        IconButton(
-                          tooltip: '前往设置',
+                        TextButton.icon(
                           onPressed: () => _open(item),
-                          icon: const Icon(Icons.open_in_new_rounded),
+                          icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                          label: const Text('去设置'),
                         ),
                     ]),
                   ),

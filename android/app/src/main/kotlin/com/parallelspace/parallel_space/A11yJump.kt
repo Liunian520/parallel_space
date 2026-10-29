@@ -114,15 +114,21 @@ object A11yJump {
         OemAdapter.Family.OPPO -> listOf(
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.oplus.accessibility", "com.oplus.accessibility.service.AccessibilitySettingsActivity"), flat),
+            highlighted(cn("com.coloros.accessibility", "com.coloros.accessibility.service.AccessibilitySettingsActivity"), flat),
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
         )
         OemAdapter.Family.VIVO -> listOf(
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
+            cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity"),
         )
         OemAdapter.Family.SAMSUNG -> listOf(
             highlighted(cn("com.samsung.accessibility", "com.samsung.accessibility.installedservice.InstalledServicesActivity"), flat),
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
         )
         OemAdapter.Family.MEIZU -> listOf(
+            highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilityInstalledServiceActivity"), flat),
             highlighted(cn("com.android.settings", "com.android.settings.Settings\$AccessibilitySettingsActivity"), flat),
         )
         // Pixel / 原生：「已下载的应用」页
