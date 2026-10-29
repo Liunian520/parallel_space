@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.23",
-  "versionCode": 14323,
-  "apkUrl": "https://link.liunianai.cn/f/disk/vwx27s4drttvx2qtmiocyzpk2b/parallel_space_v1.3.23_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/fb22kr",
-  "sha256": "e83dd97ac4a52a561bbf5671824bf0ec3c9d96d5f70174a275ff960c05d749f5",
-  "size": 21601764,
-  "notes": "1.3.23：修复启动图标与预览不一致——直接使用选项 A 原图像素（仅缩放），不再去白边/重画背景。",
-  "publishedAt": "2026-10-29T10:51:57+08:00"
+  "versionName": "1.3.24",
+  "versionCode": 14324,
+  "apkUrl": "https://link.liunianai.cn/f/disk/yowlzfhg587qd9evvfbl2lbvsn/parallel_space_v1.3.24_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/7gmzfd",
+  "sha256": "15dad16e6fa5212de00a61fef4dcade53e070c7c9e696b21ecc4f33bce0ff6fc",
+  "size": 21583960,
+  "notes": "1.3.24：首页标题旧「平行空间」迁移为 Alter Ego；启动图标按用户附件满版铺满（去画布白边嵌套，保留白窗）。",
+  "publishedAt": "2026-10-29T11:01:16+08:00"
 }
