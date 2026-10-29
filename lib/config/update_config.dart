@@ -26,7 +26,7 @@ const String kUpdateManifestGhProxyUrl =
 /// 网盘清单永久直链（每次发版由 upload_apk.py 回写为最新 manifestPublicUrl）。
 /// 注意：上一版硬编码的地址在旧清单被删后会 404，属预期；其它源仍可用。
 const String kUpdateManifestDiskUrl =
-    'https://link.liunianai.cn/f/disk/an66uxaeajoxl1jjj4fonnsarj/parallel_space_manifest.txt';
+    'https://link.liunianai.cn/f/disk/8afolhkaqv3ejhcbmniehy7mik/parallel_space_manifest.txt';
 
 /// 清单 / 发版页的分享短链（可能过盾；检查失败或用户选择时用浏览器打开）。
 const String kUpdateShareFallbackUrl = 'https://link.liunianai.cn/n8afhu';
