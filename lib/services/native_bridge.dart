@@ -131,6 +131,7 @@ class NativeBridge {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'openClone' && call.arguments is String) onOpenClone(call.arguments as String);
       if (call.method == 'mockChanged') onMockChanged?.call();
+      if (call.method == 'a11yShizukuResult') onShizukuResult?.call(call.arguments?.toString() ?? 'error');
       if (call.method == 'pinResult' && call.arguments is String) onPinned?.call(call.arguments as String);
       if (call.method == 'permPossiblyChanged' && call.arguments is Map) {
         final m = call.arguments as Map;
@@ -359,6 +360,21 @@ class NativeBridge {
 
   /// 同步分身显示名到原生（快捷方式名、最近任务名）。
   static Future<void> syncCloneNames(List<Map<String, Object?>> items) => _call('syncCloneNames', {'items': items});
+
+  /// 1.3.27 常驻模式：Shizuku 授权的异步结果（ok / denied / error:..）。
+  static void Function(String r)? onShizukuResult;
+
+  static Future<Map<String, dynamic>> a11yKeepStatus() async {
+    final m = await _call<Map>('a11yKeepStatus');
+    return m == null ? const {} : Map<String, dynamic>.from(m);
+  }
+
+  static Future<String> a11yGrantShizuku() async => await _call<String>('a11yGrantShizuku') ?? 'error';
+  static Future<String> a11yGrantRoot() async => await _call<String>('a11yGrantRoot') ?? 'error';
+
+  /// 打开 Shizuku 官方下载（不内嵌；Shizuku 必须是独立签名的特权进程）。
+  static Future<String> openShizukuDownload() async =>
+      await _call<String>('openShizukuDownload') ?? 'error';
 
   /// 无障碍状态：on（已开启）、restricted（可能被「受限制的设置」拦着，true/false/null）。
   static Future<Map<String, dynamic>> a11yStatus() async {

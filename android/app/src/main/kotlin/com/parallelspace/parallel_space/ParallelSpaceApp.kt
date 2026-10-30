@@ -19,6 +19,7 @@ class ParallelSpaceApp : Application() {
         try {
             ToolboxCrashLog.installHandler(this, "app")
             ToolboxController.install(this)
+            A11yKeeper.ensure(this, "app")
         } catch (_: Throwable) {
         }
     }

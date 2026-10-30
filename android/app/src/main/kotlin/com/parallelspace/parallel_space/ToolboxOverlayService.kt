@@ -113,6 +113,7 @@ class ToolboxOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        A11yKeeper.ensure(this, "toolbox")
         if (intent?.action == ACTION_USER_STOP) {
             ToolboxCrashLog.append(this, "INFO", "stopSelf reason=user_stop_intent")
             stopSelf()

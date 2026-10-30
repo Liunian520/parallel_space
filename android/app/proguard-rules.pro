@@ -39,3 +39,4 @@
     public static java.lang.String label(int, java.lang.CharSequence);
     public static java.lang.String defaultLabel(java.lang.String, int);
 }
+-keep class rikka.shizuku.** { *; }

@@ -207,6 +207,7 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                   },
                 ),
               ]),
+              const _A11yPermanentCard(),
               SectionCard(title: '密码本', children: [
                 GlassTile(
                   icon: Icons.key_rounded,
@@ -371,4 +372,107 @@ String recentLogEntries(String log, int n) {
   final kept = parts.where((e) => e.trim().isNotEmpty).toList();
   final tail = kept.length > n ? kept.sublist(kept.length - n) : kept;
   return tail.map((e) => e.trim()).join('\n');
+}
+
+
+/// 1.3.27：无障碍常驻模式。授权一次 WRITE_SECURE_SETTINGS 后，被系统关掉会自动重开。
+class _A11yPermanentCard extends StatefulWidget {
+  const _A11yPermanentCard();
+  @override
+  State<_A11yPermanentCard> createState() => _A11yPermanentCardState();
+}
+
+class _A11yPermanentCardState extends State<_A11yPermanentCard> {
+  Map<String, dynamic> _s = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    NativeBridge.onShizukuResult = (r) {
+      _toast(r == 'ok' ? '已开启常驻模式' : r == 'denied' ? 'Shizuku 授权被拒绝' : '失败：$r');
+      _load();
+    };
+    _load();
+  }
+
+  @override
+  void dispose() {
+    NativeBridge.onShizukuResult = null;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final s = await NativeBridge.a11yKeepStatus();
+    if (mounted) setState(() => _s = s);
+  }
+
+  void _toast(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final permanent = _s['permanent'] == true;
+    final adb = (_s['adb'] ?? 'adb shell pm grant com.parallelspace.parallel_space android.permission.WRITE_SECURE_SETTINGS').toString();
+    final shizukuSub = _s['shizukuRunning'] == true
+        ? 'Shizuku 已运行，点一下授权即可'
+        : _s['shizukuInstalled'] == true
+            ? 'Shizuku 未启动：打开 Shizuku →「通过无线调试启动」（Android 11+，按提示在通知里输入配对码，无需电脑）'
+            : '未安装 Shizuku：可在 GitHub / 酷安搜索 Shizuku 安装，用无线调试启动后回来点这里';
+    return SectionCard(title: '无障碍常驻（推荐，一次设置）', children: [
+      GlassTile(
+        icon: permanent ? Icons.verified_rounded : Icons.shield_outlined,
+        title: permanent ? '已开启常驻：被系统关掉会自动重新打开' : '未开启常驻：无障碍被系统关掉后需手动重开',
+        subtitle: '开启后，打开 App、开机、启动工具箱时都会自动恢复无障碍',
+      ),
+      if (!permanent) ...[
+        GlassTile(
+          icon: Icons.bolt_rounded,
+          title: '① 用 Shizuku 一键开启（免电脑）',
+          subtitle: shizukuSub,
+          onTap: () async {
+            final r = await NativeBridge.a11yGrantShizuku();
+            switch (r) {
+              case 'ok':
+                _toast('已开启常驻模式');
+                break;
+              case 'requested':
+                _toast('请在弹窗里允许 Alter Ego 使用 Shizuku');
+                break;
+              case 'not_installed':
+                await NativeBridge.openShizukuDownload();
+                _toast('已打开 Shizuku 下载页（需单独安装，不能打进本 APK）');
+                break;
+              case 'not_running':
+                _toast('请先打开 Shizuku →「通过无线调试启动」（Android 11+，通知里输入配对码，无需电脑）');
+                break;
+              default:
+                _toast('失败：$r');
+            }
+            await _load();
+          },
+        ),
+        GlassTile(
+          icon: Icons.admin_panel_settings_rounded,
+          title: '② 已 Root：一键开启',
+          subtitle: _s['root'] == true ? '检测到 su，点一下并在 Root 管理器里允许' : '未检测到 Root，可跳过',
+          onTap: () async {
+            final r = await NativeBridge.a11yGrantRoot();
+            _toast(r == 'ok' ? '已开启常驻模式' : '失败：$r');
+            await _load();
+          },
+        ),
+        GlassTile(
+          icon: Icons.computer_rounded,
+          title: '③ 电脑 adb（点此复制命令）',
+          subtitle: adb,
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: adb));
+            _toast('已复制，手机连电脑开 USB 调试后在终端运行');
+          },
+        ),
+      ],
+    ]);
+  }
 }

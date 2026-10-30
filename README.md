@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.26-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.27-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -64,7 +64,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.26+12326**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.27+12327**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -72,7 +72,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.26`（versionCode `12326`），下一次是 `1.3.27`（`12327`）。
+只把修订号加 1：当前 `1.3.27`（versionCode `12327`），下一次是 `1.3.28`（`12328`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
@@ -125,9 +125,15 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 
 先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。1.3.9 起会用 `/proc` 兜底识别 `:p0`、`:p1` …，并在打开分身后较长时间内保持气泡。**1.3.12** 起：账号的添加/编辑只在 App「密码本」页完成；悬浮窗只读。**1.3.13** 起：复制按钮在账号/密码行右侧，一键填入在卡片底部全宽。**1.3.14** 起：展开面板会夹到屏内，修复「点了像没点其实是 outside_tap」；密码本变更不再走系统广播。**1.3.15** 起：修复面板重建死循环导致整块点不动；诊断日志可「复制最近 50 行」。保留 tick 防抖与 AppOps 交叉验证。**1.3.18** 起：悬浮工具箱密码本列出全部账号（按备注名），点进详情再复制/一键填入。**1.3.17** 起：一键填入先清空再写入，避免叠字；添加分身页对已有分身的应用可「再开一个」。**1.3.16** 起：同一应用可「再分身一个」，每个分身数据独立、可单独改名；最近任务不再显示「[B0]」而是分身名；无障碍未开时可一键直达本应用的无障碍开关页（Android 13+ 侧载会先引导「允许受限制的设置」）。若小球仍消失，到 **设置 → 工具箱诊断日志** 复制内容反馈（日志里有 `reason=` / `tick deny`）。
 
-**无障碍服务过一段时间自己关了**
+**无障碍服务过一段时间自己关了（1.3.27 常驻模式）**
 
-小米、华为等系统会回收无障碍服务。关掉之后，填入会自动改成复制到剪贴板。若通知权限已开，会提醒一次。到机型适配检查里可以重新打开。
+系统回收 / OEM 杀后台 / 服务崩溃都会让无障碍被关掉。1.3.27 起可在 **设置 → 工具箱 →「无障碍常驻」** 一次授权 `WRITE_SECURE_SETTINGS`，之后 App 启动、开机、开工具箱时会自动写回系统开关：
+
+1. **Shizuku（推荐，免电脑）**：Shizuku 是独立 App，**不能打进本 APK**。未安装时点按钮会打开官方下载页；装好后用「无线调试」启动（Android 11+，通知里输配对码），再回 Alter Ego 一键授权。
+2. **Root**：检测到 su 时可一键 `pm grant`。
+3. **电脑 adb**：`adb shell pm grant com.parallelspace.parallel_space android.permission.WRITE_SECURE_SETTINGS`
+
+同时请在机型适配检查里把电池设为「无限制」、允许自启动，并锁定最近任务，减少被杀。Android 13+ 侧载若打不开无障碍开关，先到应用详情「允许受限制的设置」。关掉之后，填入仍会自动改成复制到剪贴板。
 
 **工作资料创建失败**
 

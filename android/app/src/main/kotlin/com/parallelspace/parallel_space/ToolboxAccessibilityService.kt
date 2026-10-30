@@ -51,6 +51,11 @@ class ToolboxAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    // 1.3.27：被系统回收时尽量自救；拿到 WRITE_SECURE_SETTINGS 时会自动重新开启
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        try { A11yKeeper.ensure(this, "taskRemoved") } catch (_: Throwable) {}
+    }
+
     /**
      * @return true 表示至少成功写入了一个字段并校验通过。
      */

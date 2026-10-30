@@ -659,6 +659,7 @@ object OemAdapter {
 
     fun accessibilityOn(ctx: Context): Boolean {
         if (ToolboxAccessibilityService.instance != null) return true
+        A11yKeeper.ensure(ctx, "check")
         return try {
             val cn = ComponentName(ctx, ToolboxAccessibilityService::class.java)
             val flat = cn.flattenToString()

@@ -58,6 +58,8 @@ dependencies {
     // NewBlackbox Bcore（Apache-2.0）+ 反射辅助；不启用 Xposed / 伪装能力
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("com.github.tiann:FreeReflection:3.2.2")
     implementation("com.moandjiezana.toml:toml4j:0.7.2")
 }

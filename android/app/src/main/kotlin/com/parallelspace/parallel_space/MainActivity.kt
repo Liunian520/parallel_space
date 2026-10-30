@@ -82,6 +82,18 @@ class MainActivity : FlutterFragmentActivity() {
         ch.setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
+                    "a11yKeepStatus" -> result.success(A11yKeeper.status(this))
+                    "a11yGrantRoot" -> Thread {
+                        val r = A11yKeeper.grantViaRoot(this)
+                        runOnUiThread { result.success(r) }
+                    }.start()
+                    "openShizukuDownload" -> result.success(A11yKeeper.openDownload(this))
+                    "a11yGrantShizuku" -> {
+                        val r = A11yKeeper.grantViaShizuku(this) { res ->
+                            runOnUiThread { channel?.invokeMethod("a11yShizukuResult", res) }
+                        }
+                        result.success(r)
+                    }
                     "getLaunchCloneId" -> {
                         result.success(pendingCloneId)
                         pendingCloneId = null
