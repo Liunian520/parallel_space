@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.26",
-  "versionCode": 14326,
-  "apkUrl": "https://link.liunianai.cn/f/disk/4po4xmrm2vlegrat6jgzo15rql/parallel_space_v1.3.26_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/nwkeuf",
-  "sha256": "be177e66d804698b9d62615da6f5992a02fe0d9c1aa1efc5f884921aed3729e0",
-  "size": 21454108,
-  "notes": "1.3.26：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
-  "publishedAt": "2026-10-29T11:48:07+08:00"
+  "versionName": "1.3.27",
+  "versionCode": 14327,
+  "apkUrl": "https://link.liunianai.cn/f/disk/1qrvfs83cryg7hgywsotzgwfwy/parallel_space_v1.3.27_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/2ns2n9",
+  "sha256": "1cf046689c3bd00696b35a72babd1a27eb70dc7f9c7d759bf6dbefc0210ec49c",
+  "size": 21455224,
+  "notes": "1.3.27：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "publishedAt": "2026-10-30T19:39:47+08:00"
 }
