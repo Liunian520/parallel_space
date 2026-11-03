@@ -1,6 +1,6 @@
 {
   "versionName": "1.3.28",
-  "versionCode": 12328,
+  "versionCode": 14328,
   "apkUrl": "https://link.liunianai.cn/f/disk/hszn66ohplr3eh6tgcc1j4bpbc/parallel_space_v1.3.28_arm64.apk",
   "apkShareUrl": "https://link.liunianai.cn/aj87cm",
   "sha256": "9f3ca2d5a117abd41c8e03523aeb08a8eeafed861dbd853f229a017412331663",
