@@ -42,6 +42,7 @@ object VirtualEngine {
                 // 不开启隐藏 Root / 额外伪装相关开关的默认行为以外的能力
             })
             attachOk = true
+            try { ClonePermissionFix.install() } catch (t: Throwable) { Log.w(TAG, "perm fix", t) }
             if (lastError?.startsWith("attach:") == true) lastError = null
         } catch (t: Throwable) {
             attachOk = false

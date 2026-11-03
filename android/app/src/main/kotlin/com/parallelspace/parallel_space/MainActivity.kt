@@ -164,7 +164,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "retryVirtualEngine" -> result.success(VirtualEngine.retry(this))
                     "listVirtualClones" -> result.success(VirtualEngine.listCloned())
                     "cloneVirtual" -> result.success(VirtualEngine.clone(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
-                    "launchVirtual" -> result.success(VirtualEngine.launch(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
+                    "launchVirtual" -> launchVirtualWithPerms(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0, result)
                     "syncCloneNames" -> result.success(CloneNames.sync(this, call.argument<List<Map<String, Any?>>>("items") ?: emptyList()))
                     "deleteVirtual" -> result.success(VirtualEngine.delete(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
                     "isVirtualCloned" -> result.success(VirtualEngine.isCloned(call.argument<String>("pkg")!!))
@@ -680,6 +680,7 @@ class MainActivity : FlutterFragmentActivity() {
 
 
     companion object {
+        private const val REQ_CLONE_PERMS = 7301
         const val CHANNEL = "parallel_space/native"
         const val EXTRA_CLONE_ID = "clone_id"
         const val EXTRA_OPEN_VAULT = "open_vault"
@@ -716,4 +717,43 @@ class MainActivity : FlutterFragmentActivity() {
                 )
             }
     }
+
+    // ---- 1.3.28：分身危险权限由宿主向系统真实申请 ----
+    private var pendingLaunch: Triple<String, Int, MethodChannel.Result>? = null
+
+    private fun missingHostPerms(pkg: String): Array<String> {
+        val requested = try {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(pkg, PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet()
+        } catch (_: Throwable) { null } ?: try {
+            top.niunaijun.blackbox.BlackBoxCore.getBPackageManager()
+                .getPackageInfo(pkg, PackageManager.GET_PERMISSIONS, 0)?.requestedPermissions?.toSet()
+        } catch (_: Throwable) { null } ?: setOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        return requested.filter { p ->
+            p in ClonePermissionFix.REQUESTABLE &&
+                (Build.VERSION.SDK_INT >= 33 || !p.startsWith("android.permission.READ_MEDIA_")) &&
+                (Build.VERSION.SDK_INT < 33 || (p != Manifest.permission.READ_EXTERNAL_STORAGE && p != Manifest.permission.WRITE_EXTERNAL_STORAGE)) &&
+                (Build.VERSION.SDK_INT >= 31 || !p.startsWith("android.permission.BLUETOOTH_")) &&
+                ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+    }
+
+    private fun launchVirtualWithPerms(pkg: String, userId: Int, result: MethodChannel.Result) {
+        val missing = try { missingHostPerms(pkg) } catch (_: Throwable) { emptyArray() }
+        if (missing.isEmpty() || pendingLaunch != null) {
+            result.success(VirtualEngine.launch(pkg, userId)); return
+        }
+        pendingLaunch = Triple(pkg, userId, result)
+        ActivityCompat.requestPermissions(this, missing, REQ_CLONE_PERMS)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_CLONE_PERMS) return
+        val p = pendingLaunch ?: return
+        pendingLaunch = null
+        try { p.third.success(VirtualEngine.launch(p.first, p.second)) } catch (_: Throwable) {}
+    }
+
 }

@@ -1,6 +1,18 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.27（versionCode 12327），下一次是 1.3.28（12328）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.28（versionCode 12328），下一次是 1.3.29（12329）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.28] - 2026-11-03
+
+### 修复
+
+- **分身扫码提示「需要相机权限」、预览全黑**：分身进程里 Bcore 把权限查询的 uid 换成虚拟 uid、包名换成分身包名；Android 14/15 的 `checkPermissionForDevice` / `IPermissionManager.checkPermission` 没被代理，系统拿虚拟身份去查 → 一律拒绝；而系统授权弹窗认的是宿主（已授权），所以也不弹。另外 Bcore 完全没代理 `media.camera`，`ICameraService.connectDevice` 带着分身包名 / 虚拟 uid 被 cameraserver 拒绝 → 黑屏。
+- 现在相机、麦克风、定位、存储 / 照片视频音频、通讯录、日历、电话状态、蓝牙 / 附近设备、身体传感器、运动识别、通知等危险权限，在分身里都按 **宿主 Alter Ego 的授权状态** 返回；相机服务的所有调用把包名、uid、`AttributionSourceState` 改回宿主，预览正常出画面。
+- 启动分身前，若分身需要而 Alter Ego 还没授权的权限，会先弹 **系统原生授权弹窗**（只需允许一次），然后再打开分身。
+
+### 其他
+
+- 版本 `1.3.28+12328`。
 
 ## [1.3.27] - 2026-10-30
 
