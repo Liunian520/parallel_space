@@ -13,6 +13,7 @@ import '../state/settings_store.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/pressable.dart';
 import '../widgets/section_tile.dart';
+import 'camera_diag_screen.dart';
 import 'compat_screen.dart';
 import 'private_space_screen.dart';
 import 'toolbox_screen.dart';
@@ -72,6 +73,12 @@ class SettingsScreen extends StatelessWidget {
               title: '工具箱诊断日志',
               subtitle: '悬浮窗消失时可查看、复制或分享最近日志',
               onTap: () => _push(context, const ToolboxCrashLogScreen()),
+            ),
+            GlassTile(
+              icon: Icons.camera_alt_rounded,
+              title: '相机自检',
+              subtitle: '分身扫码黑屏时，自检本机相机并查看分身相机日志',
+              onTap: () => _push(context, const CameraDiagScreen()),
             ),
           ]),
           SectionCard(title: '系统适配', children: [

@@ -62,6 +62,38 @@ object ClonePermissionFix {
     val REQUESTABLE: Set<String> = DANGEROUS - "android.permission.ACCESS_BACKGROUND_LOCATION"
 
     @Volatile private var lifecycleAdded = false
+    private var opLogged = 0
+
+    /**
+     * Camera1（android.hardware.Camera.open）在 native 里直接连 cameraserver，不经 Java 代理，
+     * 包名来自 ActivityThread.currentOpPackageName() / Context.getOpPackageName()。
+     * 这里确认它们是宿主包名；不是就用 Bcore 的 ContextCompat.fix 再修一次并写诊断日志。
+     */
+    fun checkOpPackage(ctx: android.content.Context?, where: String) {
+        if (ctx == null) return
+        try {
+            val host = BlackBoxCore.getHostPkg()
+            val op = try { ctx.opPackageName } catch (_: Throwable) { null }
+            val cur = try {
+                Class.forName("android.app.ActivityThread").getMethod("currentOpPackageName").invoke(null) as? String
+            } catch (_: Throwable) { null }
+            val attr = if (Build.VERSION.SDK_INT >= 31) try { ctx.attributionSource.let { "${it.packageName}/${it.uid}" } } catch (_: Throwable) { "?" } else "-"
+            val bad = (op != null && op != host) || (cur != null && cur != host)
+            if (bad || opLogged < 3) {
+                opLogged++
+                CameraDiag.log("opPkg@$where op=$op current=$cur attr=$attr host=$host/${BlackBoxCore.getHostUid()} bUid=${try { BlackBoxCore.getBUid() } catch (_: Throwable) { -1 }} sdk=${Build.VERSION.SDK_INT} ${Build.MANUFACTURER}")
+            }
+            if (bad) {
+                var c: android.content.Context? = ctx
+                while (c is android.content.ContextWrapper) {
+                    try { top.niunaijun.blackbox.utils.compat.ContextCompat.fix(c) } catch (_: Throwable) {}
+                    c = c.baseContext
+                }
+                try { top.niunaijun.blackbox.utils.compat.ContextCompat.fix(ctx.applicationContext) } catch (_: Throwable) {}
+                CameraDiag.log("opPkg fixed → ${try { ctx.opPackageName } catch (_: Throwable) { "?" }}")
+            }
+        } catch (t: Throwable) { CameraDiag.log("checkOpPackage $where: $t") }
+    }
     @Volatile private var cameraStub: CameraServiceStub? = null
 
     fun install() {
@@ -76,6 +108,13 @@ object ClonePermissionFix {
                     top.niunaijun.blackbox.app.configuration.AppLifecycleCallback() {
                     override fun beforeApplicationOnCreate(p: String?, pn: String?, a: android.app.Application?, u: Int) {
                         apply()
+                        checkOpPackage(a, "beforeOnCreate")
+                    }
+                    override fun afterApplicationOnCreate(p: String?, pn: String?, a: android.app.Application?, u: Int) {
+                        checkOpPackage(a, "afterOnCreate")
+                    }
+                    override fun onActivityResumed(act: android.app.Activity) {
+                        checkOpPackage(act, "resume ${act.javaClass.simpleName}")
                     }
                 })
             } catch (t: Throwable) { Log.w(TAG, "lifecycle", t) }
@@ -108,8 +147,9 @@ object ClonePermissionFix {
                 s.injectHook()
                 cameraStub = s
                 resetCameraManagerCache()
+                CameraDiag.log("media.camera proxy installed")
             }
-        } catch (t: Throwable) { Log.w(TAG, "camera hook", t) }
+        } catch (t: Throwable) { Log.w(TAG, "camera hook", t); CameraDiag.log("camera hook FAIL $t") }
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -168,7 +208,7 @@ object ClonePermissionFix {
             fun create(): CameraServiceStub? {
                 val sm = Class.forName("android.os.ServiceManager")
                 val b = sm.getMethod("getService", String::class.java).invoke(null, NAME) as? IBinder ?: return null
-                if (b is BinderInvocationStub) return null
+                if (b is BinderInvocationStub) { CameraDiag.log("media.camera already proxied by ${b.javaClass.simpleName}"); return null }
                 return CameraServiceStub(b)
             }
         }
@@ -185,13 +225,33 @@ object ClonePermissionFix {
         override fun isBadEnv(): Boolean = false
 
         override fun invoke(proxy: Any?, method: Method, args: Array<Any?>?): Any? {
-            val a = args
-            if (a != null) {
-                try { fixArgs(a) } catch (t: Throwable) { Log.w(TAG, "fixArgs ${method.name}", t) }
+            val name = method.name
+            val interesting = name.startsWith("connect") || name == "getNumberOfCameras" || name.startsWith("getCameraInfo") ||
+                name == "getCameraCharacteristics" || name == "addListener" || name == "addListenerForDevice"
+            val orig = args?.copyOf()
+            if (args != null) {
+                try { fixArgs(args) } catch (t: Throwable) { CameraDiag.log("fixArgs $name: $t") }
             }
+            if (interesting) CameraDiag.log("-> $name(" + (args?.joinToString { CameraDiag.summarize(it) } ?: "") + ")")
             return try {
-                method.invoke(base, *(a ?: emptyArray()))
-            } catch (e: InvocationTargetException) { throw e.cause ?: e }
+                val r = method.invoke(base, *(args ?: emptyArray()))
+                if (interesting) CameraDiag.log("<- $name ok ${CameraDiag.summarize(r)}")
+                r
+            } catch (e: InvocationTargetException) {
+                val c = e.cause ?: e
+                CameraDiag.log("<- $name FAIL ${c.javaClass.simpleName}: ${c.message}")
+                if (orig != null && name.startsWith("connect") && !orig.contentEquals(args)) {
+                    // 改写后的参数被拒时，用原参数再试一次
+                    try {
+                        val r2 = method.invoke(base, *orig)
+                        CameraDiag.log("<- $name retry-orig ok")
+                        return r2
+                    } catch (e2: InvocationTargetException) {
+                        CameraDiag.log("<- $name retry-orig FAIL ${e2.cause}")
+                    }
+                }
+                throw c
+            }
         }
 
         private fun fixArgs(a: Array<Any?>) {
@@ -213,7 +273,6 @@ object ClonePermissionFix {
             val c = s.javaClass
             try { c.getField("packageName").set(s, hostPkg) } catch (_: Throwable) {}
             try { c.getField("uid").setInt(s, hostUid) } catch (_: Throwable) {}
-            try { c.getField("pid").setInt(s, Process.myPid()) } catch (_: Throwable) {}
         }
     }
 
@@ -224,8 +283,8 @@ object ClonePermissionFix {
             val inst = g.getDeclaredField("gCameraManager").apply { isAccessible = true }.get(null) ?: return
             val f = g.getDeclaredField("mCameraService").apply { isAccessible = true }
             val cur = f.get(inst) ?: return
-            if (!java.lang.reflect.Proxy.isProxyClass(cur.javaClass)) f.set(inst, null)
-        } catch (_: Throwable) {}
+            if (!java.lang.reflect.Proxy.isProxyClass(cur.javaClass)) { f.set(inst, null); CameraDiag.log("CameraManagerGlobal cache cleared") }
+        } catch (t: Throwable) { CameraDiag.log("reset cache: ${t.javaClass.simpleName}") }
     }
 
     @Suppress("unused")

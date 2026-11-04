@@ -173,6 +173,10 @@ class NativeBridge {
   static Future<String> openShortcutPermission() async => await _call<String>('openShortcutPermission') ?? 'error';
 
   /// 打开自启动 / 后台运行管理页。
+  static Future<String> cameraSelfTest() async => await _call<String>('cameraSelfTest') ?? '自检失败';
+  static Future<String> cameraDiagLog() async => await _call<String>('cameraDiagLog') ?? '';
+  static Future<void> clearCameraDiag() async => _call<bool>('clearCameraDiag');
+
   static Future<String> openAutoStart() async => await _call<String>('openAutoStart') ?? 'error';
 
   /// 请求忽略电池优化。'ok'（已豁免）| 'requested' | 'error'

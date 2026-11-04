@@ -164,6 +164,17 @@ class MainActivity : FlutterFragmentActivity() {
                     "retryVirtualEngine" -> result.success(VirtualEngine.retry(this))
                     "listVirtualClones" -> result.success(VirtualEngine.listCloned())
                     "cloneVirtual" -> result.success(VirtualEngine.clone(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
+                    "cameraSelfTest" -> {
+                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQ_CLONE_PERMS + 1)
+                            result.success("Alter Ego 还没有相机权限，已弹出系统授权窗，允许后再点一次自检。")
+                        } else Thread {
+                            val r = try { CameraDiag.selfTest(applicationContext) } catch (t: Throwable) { "自检异常: $t" }
+                            runOnUiThread { result.success(r) }
+                        }.start()
+                    }
+                    "cameraDiagLog" -> result.success(CameraDiag.read(this))
+                    "clearCameraDiag" -> { CameraDiag.clear(this); result.success(true) }
                     "launchVirtual" -> launchVirtualWithPerms(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0, result)
                     "syncCloneNames" -> result.success(CloneNames.sync(this, call.argument<List<Map<String, Any?>>>("items") ?: emptyList()))
                     "deleteVirtual" -> result.success(VirtualEngine.delete(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))

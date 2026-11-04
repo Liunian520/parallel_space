@@ -1,6 +1,21 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.28（versionCode 12328），下一次是 1.3.29（12329）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.29（versionCode 12329），下一次是 1.3.30（12330）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.29] - 2026-11-04
+
+### 修复
+
+- **分身扫码仍黑屏（权限提示已消失）**：相机代理不再改写 `AttributionSourceState.pid`（交给 cameraserver 按调用方解析）；`connect*` 被拒时自动用原始参数重试一次。
+- Camera1（`android.hardware.Camera.open`，很多扫码 SDK 在用）在 native 里直连 cameraserver、不经 Java 代理，包名取自 `ActivityThread.currentOpPackageName()`：现在分身 Application 创建前后和每个界面恢复时都会检查，若不是宿主包名就重新修正 Context / AttributionSource。
+
+### 新增
+
+- **设置 → 相机自检**：在 Alter Ego 里用 Camera2 打开相机并等第一帧，判断本机相机与宿主权限是否正常；同时显示分身进程的相机诊断日志（代理是否装上、每次 connect 的参数和结果、opPackageName），可一键复制发给开发者。logcat 标签 `ACam`。
+
+### 其他
+
+- 版本 `1.3.29+12329`（arm64 versionCode 14329）。
 
 ## [1.3.28] - 2026-11-03
 
