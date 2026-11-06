@@ -14,16 +14,18 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
 /**
- * 分身进程里的运行时权限 / 相机修复（1.3.28）。
+ * 分身进程里的运行时权限 / 相机修复（1.3.28–1.3.30）。
  *
- * 根因：分身进程真实 uid 是宿主 uid，但 Bcore 把 Binder 调用里的 uid 换成虚拟 BUid、包名是分身包名。
+ * 根因：
+ * - 分身进程真实 uid 是宿主 uid，但 Bcore 把 Binder 调用里的 uid 换成虚拟 BUid、包名是分身包名。
  * - Android 14/15 的 checkSelfPermission 走 IActivityManager.checkPermissionForDevice /
- *   IPermissionManager.checkPermission(分身包名, …)，Bcore 没挂这些方法 → 系统拿虚拟 uid / 未授权的
- *   真机同名包去查 → DENIED，于是分身弹「需要相机权限」，而系统授权弹窗认的是宿主（已授权）→ 不弹。
- * - Bcore 完全没代理 media.camera，ICameraService.connectDevice 带着分身包名 / 虚拟 uid →
- *   cameraserver 校验包名与调用 uid 不符直接拒绝 → 预览全黑。
- * 修复：危险权限一律按「宿主包名 + 宿主 uid + 宿主 userId」去真查；相机服务的所有调用把包名、uid、
- * AttributionSourceState 改回宿主。宿主没授权时由 MainActivity 在启动分身前弹系统真弹窗。
+ *   IPermissionManager.checkPermission，Bcore 没挂这些方法 → DENIED，授权弹窗又不弹。
+ * - Bcore 完全没代理 media.camera → cameraserver 拒连 → 预览全黑。
+ * - Bcore 的 AppOps NoteOp 只对麦克风类 op 直接放行，CAMERA 的 noteOp 仍带分身身份走系统 →
+ *   部分机型（尤其 HyperOS）在 connect 成功后 noteOp 失败，画面仍黑。
+ *
+ * 1.3.30：AppOps CAMERA 放行；AttributionSource / State 更彻底；包名按「像包名」替换；
+ * 分身进程首次 resume 时做一次轻量相机探测写进诊断日志。
  */
 object ClonePermissionFix {
     private const val TAG = "ClonePermFix"
@@ -62,12 +64,13 @@ object ClonePermissionFix {
     val REQUESTABLE: Set<String> = DANGEROUS - "android.permission.ACCESS_BACKGROUND_LOCATION"
 
     @Volatile private var lifecycleAdded = false
+    @Volatile private var cameraStub: CameraServiceStub? = null
+    @Volatile private var probed = false
     private var opLogged = 0
 
     /**
      * Camera1（android.hardware.Camera.open）在 native 里直接连 cameraserver，不经 Java 代理，
      * 包名来自 ActivityThread.currentOpPackageName() / Context.getOpPackageName()。
-     * 这里确认它们是宿主包名；不是就用 Bcore 的 ContextCompat.fix 再修一次并写诊断日志。
      */
     fun checkOpPackage(ctx: android.content.Context?, where: String) {
         if (ctx == null) return
@@ -77,11 +80,17 @@ object ClonePermissionFix {
             val cur = try {
                 Class.forName("android.app.ActivityThread").getMethod("currentOpPackageName").invoke(null) as? String
             } catch (_: Throwable) { null }
-            val attr = if (Build.VERSION.SDK_INT >= 31) try { ctx.attributionSource.let { "${it.packageName}/${it.uid}" } } catch (_: Throwable) { "?" } else "-"
+            val attr = if (Build.VERSION.SDK_INT >= 31) try {
+                ctx.attributionSource.let { "${it.packageName}/${it.uid}" }
+            } catch (_: Throwable) { "?" } else "-"
             val bad = (op != null && op != host) || (cur != null && cur != host)
             if (bad || opLogged < 3) {
                 opLogged++
-                CameraDiag.log("opPkg@$where op=$op current=$cur attr=$attr host=$host/${BlackBoxCore.getHostUid()} bUid=${try { BlackBoxCore.getBUid() } catch (_: Throwable) { -1 }} sdk=${Build.VERSION.SDK_INT} ${Build.MANUFACTURER}")
+                CameraDiag.log(
+                    "opPkg@$where op=$op current=$cur attr=$attr host=$host/${BlackBoxCore.getHostUid()} " +
+                        "bUid=${try { BlackBoxCore.getBUid() } catch (_: Throwable) { -1 }} " +
+                        "sdk=${Build.VERSION.SDK_INT} ${Build.MANUFACTURER}/${Build.MODEL}"
+                )
             }
             if (bad) {
                 var c: android.content.Context? = ctx
@@ -94,7 +103,6 @@ object ClonePermissionFix {
             }
         } catch (t: Throwable) { CameraDiag.log("checkOpPackage $where: $t") }
     }
-    @Volatile private var cameraStub: CameraServiceStub? = null
 
     fun install() {
         try {
@@ -111,10 +119,17 @@ object ClonePermissionFix {
                         checkOpPackage(a, "beforeOnCreate")
                     }
                     override fun afterApplicationOnCreate(p: String?, pn: String?, a: android.app.Application?, u: Int) {
+                        apply()
                         checkOpPackage(a, "afterOnCreate")
+                    }
+                    override fun onActivityCreated(act: android.app.Activity, b: android.os.Bundle?) {
+                        checkOpPackage(act, "created ${act.javaClass.simpleName}")
                     }
                     override fun onActivityResumed(act: android.app.Activity) {
                         checkOpPackage(act, "resume ${act.javaClass.simpleName}")
+                        // 代理可能被其它代码清掉，resume 时再确保一次
+                        ensureCameraProxy()
+                        probeOnce(act)
                     }
                 })
             } catch (t: Throwable) { Log.w(TAG, "lifecycle", t) }
@@ -138,18 +153,84 @@ object ClonePermissionFix {
                         wrap(stub, "checkPermission", Kind.PKG_USER)
                         wrap(stub, "checkUidPermission", Kind.UID)
                     }
+                    "IAppOpsManagerProxy" -> listOf(
+                        "noteOp", "noteOpNoThrow", "noteOperation", "noteProxyOperation",
+                    ).forEach { wrapCameraOp(stub, it) }
                 }
             }
         } catch (t: Throwable) { Log.w(TAG, "perm hooks", t) }
+        ensureCameraProxy()
+    }
+
+    private fun ensureCameraProxy() {
         try {
-            if (cameraStub == null) {
-                val s = CameraServiceStub.create() ?: return
-                s.injectHook()
-                cameraStub = s
-                resetCameraManagerCache()
-                CameraDiag.log("media.camera proxy installed")
+            if (cameraStub != null) {
+                // 确认 ServiceManager 缓存仍是我们的代理
+                try {
+                    val sm = Class.forName("android.os.ServiceManager")
+                    val b = sm.getMethod("getService", String::class.java).invoke(null, CameraServiceStub.NAME)
+                    if (b !== cameraStub) {
+                        CameraDiag.log("media.camera cache lost, re-inject")
+                        cameraStub?.injectHook()
+                        resetCameraManagerCache()
+                    }
+                } catch (_: Throwable) {}
+                return
             }
-        } catch (t: Throwable) { Log.w(TAG, "camera hook", t); CameraDiag.log("camera hook FAIL $t") }
+            val s = CameraServiceStub.create() ?: return
+            s.injectHook()
+            cameraStub = s
+            resetCameraManagerCache()
+            CameraDiag.log("media.camera proxy installed")
+        } catch (t: Throwable) {
+            Log.w(TAG, "camera hook", t)
+            CameraDiag.log("camera hook FAIL $t")
+        }
+    }
+
+    /** 分身进程首次 resume：列相机、试开后置，结果写入 camera_diag.log。 */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun probeOnce(act: android.app.Activity) {
+        if (probed) return
+        probed = true
+        Thread({
+            try {
+                val host = BlackBoxCore.getHostPkg()
+                val cm = act.applicationContext.getSystemService(android.hardware.camera2.CameraManager::class.java)
+                val ids = try { cm.cameraIdList.toList() } catch (t: Throwable) {
+                    CameraDiag.log("probe getCameraIdList FAIL $t"); return@Thread
+                }
+                CameraDiag.log("probe ids=${ids.joinToString()} op=${try { act.opPackageName } catch (_: Throwable) { "?" }} host=$host")
+                if (ids.isEmpty()) return@Thread
+                val id = ids.first()
+                val opened = java.util.concurrent.CountDownLatch(1)
+                var err: String? = null
+                var ok = false
+                val ht = android.os.HandlerThread("cam-probe").apply { start() }
+                val h = android.os.Handler(ht.looper)
+                try {
+                    cm.openCamera(id, object : android.hardware.camera2.CameraDevice.StateCallback() {
+                        override fun onOpened(c: android.hardware.camera2.CameraDevice) {
+                            ok = true; c.close(); opened.countDown()
+                        }
+                        override fun onDisconnected(c: android.hardware.camera2.CameraDevice) {
+                            err = "disconnected"; c.close(); opened.countDown()
+                        }
+                        override fun onError(c: android.hardware.camera2.CameraDevice, e: Int) {
+                            err = "error=$e"; c.close(); opened.countDown()
+                        }
+                    }, h)
+                    opened.await(3, java.util.concurrent.TimeUnit.SECONDS)
+                    CameraDiag.log(if (ok) "probe openCamera($id) OK" else "probe openCamera($id) FAIL ${err ?: "timeout"}")
+                } catch (t: Throwable) {
+                    CameraDiag.log("probe openCamera FAIL $t")
+                } finally {
+                    ht.quitSafely()
+                }
+            } catch (t: Throwable) {
+                CameraDiag.log("probe FAIL $t")
+            }
+        }, "alterego-cam-probe").start()
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -167,6 +248,15 @@ object ClonePermissionFix {
         val old = map[name]
         if (old is PermHook) return
         stub.addMethodHook(name, PermHook(old, kind))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun wrapCameraOp(stub: ClassInvocationStub, name: String) {
+        val mapF = ClassInvocationStub::class.java.getDeclaredField("mMethodHookMap").apply { isAccessible = true }
+        val map = mapF.get(stub) as? MutableMap<String, MethodHook> ?: return
+        val old = map[name]
+        if (old is CameraOpHook) return
+        stub.addMethodHook(name, CameraOpHook(old))
     }
 
     private class PermHook(private val old: MethodHook?, private val kind: Kind) : MethodHook() {
@@ -200,7 +290,59 @@ object ClonePermissionFix {
         }
     }
 
-    /** cameraserver 代理：所有调用里的包名 / uid / AttributionSourceState 改为宿主。 */
+    /** AppOps 的 noteOp*：CAMERA 直接 MODE_ALLOWED，避免带分身身份记 op 被拒。 */
+    private class CameraOpHook(private val old: MethodHook?) : MethodHook() {
+        override fun hook(who: Any?, method: Method, args: Array<Any?>?): Any? {
+            val opName = opPublicName(args)
+            if (opName != null && opName.uppercase().contains("CAMERA")) {
+                CameraDiag.log("AppOps ${method.name} $opName → ALLOWED")
+                return 0 // AppOpsManager.MODE_ALLOWED
+            }
+            // 顺手把参数里的分身包名 / 虚拟 uid 换成宿主，再交给原 hook / 系统
+            if (args != null) {
+                try { rewriteAppOpsArgs(args) } catch (_: Throwable) {}
+            }
+            return if (old != null) old.hook(who, method, args) else try {
+                method.invoke(who, *(args ?: emptyArray()))
+            } catch (e: InvocationTargetException) { throw e.cause ?: e }
+        }
+
+        private fun opPublicName(args: Array<Any?>?): String? {
+            if (args.isNullOrEmpty()) return null
+            return try {
+                when (val a0 = args[0]) {
+                    is Int -> {
+                        val m = Class.forName("android.app.AppOpsManager")
+                            .getMethod("opToPublicName", Int::class.javaPrimitiveType)
+                        m.invoke(null, a0) as? String
+                    }
+                    is String -> a0
+                    else -> null
+                }
+            } catch (_: Throwable) { null }
+        }
+
+        private fun rewriteAppOpsArgs(a: Array<Any?>) {
+            val hostPkg = BlackBoxCore.getHostPkg()
+            val hostUid = BlackBoxCore.getHostUid()
+            val appPkg = try { BlackBoxCore.getAppPackageName() } catch (_: Throwable) { null }
+            val bUid = try { BlackBoxCore.getBUid() } catch (_: Throwable) { -2 }
+            for (i in a.indices) {
+                when (val v = a[i]) {
+                    is String -> if (v == appPkg || (v != hostPkg && looksLikePackage(v))) a[i] = hostPkg
+                    is Int -> if (bUid > 0 && v == bUid) a[i] = hostUid
+                    else -> if (v != null) {
+                        val n = v.javaClass.name
+                        if (n.endsWith("AttributionSource") || n.endsWith("AttributionSourceState")) {
+                            fixAttributionObject(v, hostPkg, hostUid)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** cameraserver 代理：所有调用里的包名 / uid / AttributionSource* 改为宿主。 */
     class CameraServiceStub private constructor(binder: IBinder) : BinderInvocationStub(binder) {
         private val raw = binder
         companion object {
@@ -208,7 +350,11 @@ object ClonePermissionFix {
             fun create(): CameraServiceStub? {
                 val sm = Class.forName("android.os.ServiceManager")
                 val b = sm.getMethod("getService", String::class.java).invoke(null, NAME) as? IBinder ?: return null
-                if (b is BinderInvocationStub) { CameraDiag.log("media.camera already proxied by ${b.javaClass.simpleName}"); return null }
+                if (b is CameraServiceStub) return b
+                if (b is BinderInvocationStub) {
+                    CameraDiag.log("media.camera already proxied by ${b.javaClass.simpleName}")
+                    // 仍包一层我们的，确保 fixArgs 生效
+                }
                 return CameraServiceStub(b)
             }
         }
@@ -227,7 +373,8 @@ object ClonePermissionFix {
         override fun invoke(proxy: Any?, method: Method, args: Array<Any?>?): Any? {
             val name = method.name
             val interesting = name.startsWith("connect") || name == "getNumberOfCameras" || name.startsWith("getCameraInfo") ||
-                name == "getCameraCharacteristics" || name == "addListener" || name == "addListenerForDevice"
+                name == "getCameraCharacteristics" || name == "addListener" || name == "addListenerForDevice" ||
+                name.startsWith("is") || name.startsWith("supports")
             val orig = args?.copyOf()
             if (args != null) {
                 try { fixArgs(args) } catch (t: Throwable) { CameraDiag.log("fixArgs $name: $t") }
@@ -241,7 +388,6 @@ object ClonePermissionFix {
                 val c = e.cause ?: e
                 CameraDiag.log("<- $name FAIL ${c.javaClass.simpleName}: ${c.message}")
                 if (orig != null && name.startsWith("connect") && !orig.contentEquals(args)) {
-                    // 改写后的参数被拒时，用原参数再试一次
                     try {
                         val r2 = method.invoke(base, *orig)
                         CameraDiag.log("<- $name retry-orig ok")
@@ -260,20 +406,82 @@ object ClonePermissionFix {
             val appPkg = try { BlackBoxCore.getAppPackageName() } catch (_: Throwable) { null }
             val bUid = try { BlackBoxCore.getBUid() } catch (_: Throwable) { -2 }
             for (i in a.indices) {
-                val v = a[i]
-                when {
-                    v is String && appPkg != null && v == appPkg -> a[i] = hostPkg
-                    v is Int && bUid > 0 && v == bUid -> a[i] = hostUid
-                    v != null && v.javaClass.name == "android.content.AttributionSourceState" -> fixAttribution(v, hostPkg, hostUid)
+                when (val v = a[i]) {
+                    is String -> {
+                        if (v == appPkg) a[i] = hostPkg
+                        else if (v != hostPkg && looksLikePackage(v)) a[i] = hostPkg
+                    }
+                    is Int -> if (bUid > 0 && v == bUid) a[i] = hostUid
+                    else -> if (v != null) {
+                        val n = v.javaClass.name
+                        if (n.endsWith("AttributionSource") || n.endsWith("AttributionSourceState")) {
+                            fixAttributionObject(v, hostPkg, hostUid)
+                        }
+                    }
                 }
             }
         }
+    }
 
-        private fun fixAttribution(s: Any, hostPkg: String, hostUid: Int) {
-            val c = s.javaClass
-            try { c.getField("packageName").set(s, hostPkg) } catch (_: Throwable) {}
-            try { c.getField("uid").setInt(s, hostUid) } catch (_: Throwable) {}
+    private fun looksLikePackage(s: String): Boolean =
+        s.length in 3..256 && s.contains('.') && s.any { it.isLetter() } &&
+            !s.startsWith("/") && !s.startsWith("android.permission.") &&
+            !s.startsWith("android.hardware.") && s != "android"
+
+    private fun fixAttributionObject(obj: Any, hostPkg: String, hostUid: Int) {
+        val n = obj.javaClass.name
+        if (n.endsWith("AttributionSourceState")) {
+            fixAttributionState(obj, hostPkg, hostUid)
+            return
         }
+        // AttributionSource：改内部 State，并递归 next
+        try {
+            val f = obj.javaClass.getDeclaredField("mAttributionSourceState").apply { isAccessible = true }
+            val state = f.get(obj)
+            if (state != null) fixAttributionState(state, hostPkg, hostUid)
+        } catch (_: Throwable) {
+            try {
+                // 部分 OEM 字段名不同
+                for (fn in listOf("mAttributionSourceState", "attributionSourceState", "mState")) {
+                    try {
+                        val f = obj.javaClass.getDeclaredField(fn).apply { isAccessible = true }
+                        val state = f.get(obj) ?: continue
+                        fixAttributionState(state, hostPkg, hostUid)
+                        break
+                    } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+        }
+        try {
+            val next = obj.javaClass.methods.firstOrNull { it.name == "getNext" && it.parameterTypes.isEmpty() }
+                ?.invoke(obj)
+            if (next != null) fixAttributionObject(next, hostPkg, hostUid)
+        } catch (_: Throwable) {}
+        // 再用 BlackBox 工具兜底
+        try { top.niunaijun.blackbox.utils.compat.ContextCompat.fixAttributionSourceState(obj, hostUid) } catch (_: Throwable) {}
+        try { top.niunaijun.blackbox.utils.AttributionSourceUtils.fixAttributionSourceUid(obj) } catch (_: Throwable) {}
+    }
+
+    private fun fixAttributionState(s: Any, hostPkg: String, hostUid: Int) {
+        val c = s.javaClass
+        fun setStr(field: String, value: String) {
+            try { c.getField(field).set(s, value) } catch (_: Throwable) {
+                try { c.getDeclaredField(field).apply { isAccessible = true }.set(s, value) } catch (_: Throwable) {}
+            }
+        }
+        fun setInt(field: String, value: Int) {
+            try { c.getField(field).setInt(s, value) } catch (_: Throwable) {
+                try { c.getDeclaredField(field).apply { isAccessible = true }.setInt(s, value) } catch (_: Throwable) {}
+            }
+        }
+        setStr("packageName", hostPkg)
+        setInt("uid", hostUid)
+        // pid：仅在无效时补成真实 pid（1.3.29 起不再强行改写有效 pid）
+        try {
+            val pidF = try { c.getField("pid") } catch (_: Throwable) { c.getDeclaredField("pid").apply { isAccessible = true } }
+            val cur = pidF.getInt(s)
+            if (cur <= 0) pidF.setInt(s, Process.myPid())
+        } catch (_: Throwable) {}
     }
 
     /** 若 CameraManagerGlobal 已缓存原始 ICameraService，清掉让它重新取（拿到代理）。 */
@@ -283,10 +491,11 @@ object ClonePermissionFix {
             val inst = g.getDeclaredField("gCameraManager").apply { isAccessible = true }.get(null) ?: return
             val f = g.getDeclaredField("mCameraService").apply { isAccessible = true }
             val cur = f.get(inst) ?: return
-            if (!java.lang.reflect.Proxy.isProxyClass(cur.javaClass)) { f.set(inst, null); CameraDiag.log("CameraManagerGlobal cache cleared") }
+            if (!java.lang.reflect.Proxy.isProxyClass(cur.javaClass)) {
+                f.set(inst, null)
+                CameraDiag.log("CameraManagerGlobal cache cleared")
+            }
         } catch (t: Throwable) { CameraDiag.log("reset cache: ${t.javaClass.simpleName}") }
+        // 同步清 ServiceManager.sCache 再写入由 injectHook/replaceSystemService 完成
     }
-
-    @Suppress("unused")
-    private val sdk = Build.VERSION.SDK_INT
 }

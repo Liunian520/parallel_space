@@ -1,6 +1,21 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.29（versionCode 12329），下一次是 1.3.30（12330）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.30（versionCode 12330），下一次是 1.3.31（12331）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.30] - 2026-11-06
+
+### 修复
+
+- **分身顶栏与状态栏重叠、顶部按钮点不到**：Alter Ego `targetSdk` 已是 36，Android 15+ 对 targetSdk≥35 的进程默认强制 edge-to-edge。分身跑在同一进程身份下，内容被画到状态栏下面，顶栏按钮（含部分 App 的「切换扫码工具」）落在系统栏区域无法点击。现在对非全屏 / 非沉浸式分身 Activity 强制 `decorFitsSystemWindows=true`，清掉半透明状态栏与 `LAYOUT_FULLSCREEN`；并覆盖 Bcore 的 `BTheme`（含 API 35+ 的 `windowOptOutEdgeToEdgeEnforcement`）。游戏 / 视频等已自己全屏或 IMMERSIVE 的不改。
+- **分身扫码仍黑屏**：Bcore 的 AppOps `noteOp*` 原先只对麦克风类 op 直接放行，`CAMERA` 仍带着分身身份走系统，部分机型（尤其 HyperOS）会在 connect 之后把预览掐黑。现在 `noteOp` / `noteOpNoThrow` / `noteOperation` / `noteProxyOperation` 对 CAMERA 一律 `MODE_ALLOWED`，并把参数里的包名 / uid / AttributionSource 改回宿主；`media.camera` 代理对「像包名」的字符串与 AttributionSource（含嵌套 next）改写更彻底；resume 时若代理被冲掉会重装。
+
+### 新增
+
+- 分身进程第一次回到前台时，自动做一次轻量 Camera2 开/关探测，结果写入 `files/camera_diag.log`（设置 → 相机自检可读）。
+
+### 其他
+
+- 版本 `1.3.30+12330`（arm64 versionCode 14330）。
 
 ## [1.3.29] - 2026-11-04
 

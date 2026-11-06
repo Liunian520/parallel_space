@@ -43,6 +43,7 @@ object VirtualEngine {
             })
             attachOk = true
             try { ClonePermissionFix.install() } catch (t: Throwable) { Log.w(TAG, "perm fix", t) }
+            try { CloneWindowFix.install() } catch (t: Throwable) { Log.w(TAG, "window fix", t) }
             if (lastError?.startsWith("attach:") == true) lastError = null
         } catch (t: Throwable) {
             attachOk = false

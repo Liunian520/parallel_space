@@ -48,7 +48,8 @@ class _CameraDiagScreenState extends State<CameraDiagScreen> {
       ]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('1. 点「开始自检」，检查 Alter Ego 本身能否打开相机。\n'
-            '2. 若分身扫码黑屏：先清空日志，打开分身扫一次码，回到这里点刷新，再复制日志发给开发者。'),
+            '2. 若分身扫码黑屏：先清空日志，打开分身扫一次码（分身进程会自动探测相机），回到这里点刷新，再复制日志发给开发者。\n'
+            '3. 1.3.30 起分身顶栏不应再钻进状态栏；若顶部按钮仍点不到请反馈机型。'),
         const SizedBox(height: 12),
         Row(children: [
           FilledButton(onPressed: _busy ? null : _run, child: Text(_busy ? '自检中…' : '开始自检')),
