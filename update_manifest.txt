@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.29",
-  "versionCode": 14329,
-  "apkUrl": "https://link.liunianai.cn/f/disk/qvpmzszmvqbgv40z1b5gygsc1v/parallel_space_v1.3.29_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/uezaeg",
-  "sha256": "ca485c5aec0040f622890c69b0e4e7b8440a5250e48b9ee08985f1495bd6d541",
-  "size": 21471680,
-  "notes": "1.3.29：分身相机黑屏修复尝试（Camera1 包名校正、相机代理重试），新增设置→相机自检。",
-  "publishedAt": "2026-11-04T09:02:40+08:00"
+  "versionName": "1.3.30",
+  "versionCode": 14330,
+  "apkUrl": "https://link.liunianai.cn/f/disk/um0uhpmbxhrcpolitpxfxba959/parallel_space_v1.3.30_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/jvfm5y",
+  "sha256": "6734ab9833b79f2d77a54cf6e231674515cc6129fac34aa20ef05389a909bf56",
+  "size": 21475948,
+  "notes": "1.3.30：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "publishedAt": "2026-11-06T23:42:51+08:00"
 }
