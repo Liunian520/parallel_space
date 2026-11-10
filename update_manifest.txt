@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.31",
-  "versionCode": 14331,
-  "apkUrl": "https://link.liunianai.cn/f/disk/n3jhnqf7mvfzecsu70h7tgwtly/parallel_space_v1.3.31_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/tygbqt",
-  "sha256": "224825f8b88da2286a89b36bb41ad0a732d2363e076eb7af73b8f4b780ce98a7",
+  "versionName": "1.3.32",
+  "versionCode": 14332,
+  "apkUrl": "https://link.liunianai.cn/f/disk/3fov8ukxwzh4aeyd12ehhkvdcd/parallel_space_v1.3.32_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/2k6mj2",
+  "sha256": "2c544bcc7f1bc82d9196693b23fecca6f269a94eaf7451bb394b809b90a5734a",
   "size": 21475948,
-  "notes": "1.3.31：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
-  "publishedAt": "2026-11-10T11:10:14+08:00"
+  "notes": "1.3.32：修复安卓16分身扫码黑屏（相机服务拒绝 errorNotTrusted），相机日志新增 attr 身份行。",
+  "publishedAt": "2026-11-10T11:25:02+08:00"
 }
