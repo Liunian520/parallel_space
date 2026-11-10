@@ -53,7 +53,9 @@ object CameraDiag {
             if (v.javaClass.name == "android.content.AttributionSourceState") {
                 val c = v.javaClass
                 fun g(n: String) = try { c.getField(n).get(v) } catch (_: Throwable) { "?" }
-                "ASS(pkg=${g("packageName")},uid=${g("uid")},pid=${g("pid")},dev=${g("deviceId")})"
+                val next = (g("next") as? Array<*>)?.joinToString(prefix = "[", postfix = "]") { summarize(it) } ?: "[]"
+                "ASS(pkg=${g("packageName")},tag=${g("attributionTag")},uid=${g("uid")},pid=${g("pid")},dev=${g("deviceId")}," +
+                    "token=${if (g("token") == null) "null" else "set"},next=$next)"
             } else v.javaClass.simpleName
         }
     }

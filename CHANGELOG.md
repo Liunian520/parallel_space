@@ -1,6 +1,30 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.31（versionCode 12331），下一次是 1.3.32（12332）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.32（versionCode 12332），下一次是 1.3.33（12333）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.32] - 2026-11-10
+
+### 修复：分身扫码黑屏 / 提示没有相机权限（有日志和 AOSP 源码证据）
+
+- **现象**：REDMI K80（HyperOS 3.0，Android 16）上，分身扫码页一片黑，分身提示需要相机权限，但 Alter Ego 已有相机权限，宿主相机自检正常。
+- **日志证据**（1.3.31 相机自检里的分身日志）：`getCameraCharacteristics` / `addListener` 都成功，只有 `connectDevice` 每 0.7 秒失败一次：`errorNotTrusted:459: Untrusted caller (calling PID 7421, UID 10316) trying to forward camera access to camera 0 for client com.parallelspace.parallel_space (PID -1, UID 10316)`。
+- **AOSP 依据**（android16-release）：
+  - `CameraManager.getClientAttribution()` 在 flag `dataDeliveryPermissionChecks` 关闭时发 `uid = USE_CALLING_UID(-1)`、`pid = USE_CALLING_PID(-1)`。
+  - `CameraService::connectDeviceImpl` 在该 flag 关闭时先把 `pid` 置成 `USE_CALLING_PID`（所以报错里是 PID -1），再调 `resolveAttributionSource`。
+  - `AttributionAndPermissionUtils::resolveClientUid`：`clientUid == USE_CALLING_UID` 才用调用方 uid；否则只有 `isTrustedCallingUid`（系统 / cameraserver）可以，flag 打开时才额外接受 `clientUid == callingUid`。不通过就 `errorNotTrusted(..., isPid=false)`。
+- **根因**：1.3.28–1.3.31 的 `media.camera` 代理（`ClonePermissionFix.fixAttributionState`）把 `AttributionSourceState.uid` 从 `-1` 改成宿主 uid 10316，并把 `pid` 从 `-1` 补成 `myPid`。普通应用传显式 uid 被当作「转发相机给别人」。不是没权限，是我们自己把身份填成了不被信任的格式。
+- **修改**：
+  - 新增 `CameraAttributionPolicy`：发给 cameraserver 的顶层 uid/pid 一律交回 `USE_CALLING_UID/PID`（-1），由相机服务按 Binder 调用方（就是宿主进程）解析；包名仍改成宿主。这是框架自己发的值，API 31–36 都接受。
+  - `AttributionSourceState` 先用 Parcel 复制一份再改，避免 flag 打开时原地改坏 Context 自己的 AttributionSource。
+  - next 链里的条目不改成 -1，只把分身包名 / 虚拟 uid 换成宿主。
+  - 旧版（API ≤ 35）`connect*` 的 int `clientUid` 如果等于分身虚拟 uid，也交回 `-1`。
+  - Camera1 / NDK 在 native 里（`android_hardware_Camera.cpp`）本来就把 uid/pid 设为 `USE_CALLING_*`，不经 Java 代理，不受这个 bug 影响。
+- **诊断**：分身相机日志的 `connect*` 调用新增一行 `attr ... before=[...] sent=[...]`，记录改写前后真正发出的包名、attributionTag、uid、pid、deviceId、token 和 next 链。
+- 单测 `CameraAttributionPolicyTest`（不需要 Android SDK）覆盖上述规则；`CloneInsetPolicyTest` 仍通过。
+
+### 其他
+
+- 版本 `1.3.32+12332`（arm64 versionCode 14332）。
 
 ## [1.3.31] - 2026-11-06
 

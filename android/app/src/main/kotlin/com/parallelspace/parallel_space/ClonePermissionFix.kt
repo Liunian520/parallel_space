@@ -24,6 +24,10 @@ import java.lang.reflect.Method
  * - Bcore 的 AppOps NoteOp 只对麦克风类 op 直接放行，CAMERA 的 noteOp 仍带分身身份走系统 →
  *   部分机型（尤其 HyperOS）在 connect 成功后 noteOp 失败，画面仍黑。
  *
+ * 1.3.32：真正的黑屏根因是我们把 cameraserver 调用里的 AttributionSourceState.uid/pid 从
+ * USE_CALLING_UID/PID(-1) 改成了宿主 uid / myPid，Android 16 cameraserver 视为非可信转发
+ * （errorNotTrusted）。见 CameraAttributionPolicy。
+ *
  * 1.3.30：AppOps CAMERA 曾无条件 MODE_ALLOWED。宿主拒绝时那是假授权，1.3.31 去掉。
  * 分身第一次 resume 只记录相机 id，不再 openCamera（1.3.30 的探测会占住相机，
  * 但 1.3.28/29 没有这段也黑屏，所以这不是黑屏根因）。
@@ -391,10 +395,19 @@ object ClonePermissionFix {
                 name == "getCameraCharacteristics" || name == "addListener" || name == "addListenerForDevice" ||
                 name.startsWith("is") || name.startsWith("supports")
             val orig = args?.copyOf()
+            val connect = name.startsWith("connect")
+            val before = if (connect && args != null) args.filter { isAss(it) }.joinToString { CameraDiag.summarize(it) } else ""
             if (args != null) {
-                try { fixArgs(args) } catch (t: Throwable) { CameraDiag.log("fixArgs $name: $t") }
+                try { fixArgs(name, args) } catch (t: Throwable) { CameraDiag.log("fixArgs $name: $t") }
             }
             if (interesting) CameraDiag.log("-> $name(" + (args?.joinToString { CameraDiag.summarize(it) } ?: "") + ")")
+            if (connect && args != null) {
+                // 改写后真正发给 cameraserver 的身份（含 next 链），便于以后对照 errorNotTrusted
+                CameraDiag.log(
+                    "   attr $name before=[$before] sent=[" +
+                        args.filter { isAss(it) }.joinToString { CameraDiag.summarize(it) } + "]"
+                )
+            }
             return try {
                 val r = method.invoke(base, *(args ?: emptyArray()))
                 if (interesting) CameraDiag.log("<- $name ok ${CameraDiag.summarize(r)}")
@@ -415,7 +428,10 @@ object ClonePermissionFix {
             }
         }
 
-        private fun fixArgs(a: Array<Any?>) {
+        private fun isAss(v: Any?): Boolean = v != null && v.javaClass.name.endsWith("AttributionSourceState")
+
+        private fun fixArgs(name: String, a: Array<Any?>) {
+            val connect = name.startsWith("connect")
             val hostPkg = BlackBoxCore.getHostPkg()
             val hostUid = BlackBoxCore.getHostUid()
             val appPkg = try { BlackBoxCore.getAppPackageName() } catch (_: Throwable) { null }
@@ -426,15 +442,59 @@ object ClonePermissionFix {
                         if (v == appPkg) a[i] = hostPkg
                         else if (v != hostPkg && looksLikePackage(v)) a[i] = hostPkg
                     }
-                    is Int -> if (bUid > 0 && v == bUid) a[i] = hostUid
+                    is Int -> a[i] = CameraAttributionPolicy.intArg(connect, v, bUid, hostUid)
                     else -> if (v != null) {
                         val n = v.javaClass.name
-                        if (n.endsWith("AttributionSource") || n.endsWith("AttributionSourceState")) {
+                        if (n.endsWith("AttributionSourceState")) {
+                            a[i] = fixCameraState(v, hostPkg, hostUid, appPkg, bUid)
+                        } else if (n.endsWith("AttributionSource")) {
                             fixAttributionObject(v, hostPkg, hostUid)
                         }
                     }
                 }
             }
+        }
+
+        /**
+         * 1.3.32：顶层 uid/pid 交回 USE_CALLING_UID/PID（-1），见 [CameraAttributionPolicy]。
+         * 先复制一份再改：flag 打开时框架可能直接传 Context 的 AttributionSource 内部 state，原地改会污染它。
+         */
+        private fun fixCameraState(v: Any, hostPkg: String, hostUid: Int, appPkg: String?, bUid: Int): Any {
+            val s = copyParcelable(v) ?: v
+            val c = s.javaClass
+            try { c.getField("packageName").set(s, hostPkg) } catch (_: Throwable) {}
+            try {
+                val f = c.getField("uid"); f.setInt(s, CameraAttributionPolicy.topLevelUid(f.getInt(s)))
+            } catch (_: Throwable) {}
+            try {
+                val f = c.getField("pid"); f.setInt(s, CameraAttributionPolicy.topLevelPid(f.getInt(s)))
+            } catch (_: Throwable) {}
+            try {
+                val next = c.getField("next").get(s) as? Array<*>
+                next?.forEach { e ->
+                    if (e == null) return@forEach
+                    val ec = e.javaClass
+                    try {
+                        val pf = ec.getField("packageName")
+                        if (appPkg != null && pf.get(e) == appPkg) pf.set(e, hostPkg)
+                    } catch (_: Throwable) {}
+                    try {
+                        val uf = ec.getField("uid"); uf.setInt(e, CameraAttributionPolicy.nextUid(uf.getInt(e), bUid, hostUid))
+                    } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+            return s
+        }
+
+        private fun copyParcelable(v: Any): Any? {
+            if (v !is android.os.Parcelable) return null
+            val p = android.os.Parcel.obtain()
+            return try {
+                v.writeToParcel(p, 0)
+                p.setDataPosition(0)
+                val creator = v.javaClass.getField("CREATOR").get(null) as android.os.Parcelable.Creator<*>
+                creator.createFromParcel(p)
+            } catch (_: Throwable) { null } finally { p.recycle() }
         }
     }
 

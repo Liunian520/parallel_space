@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.31-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.32-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -64,7 +64,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.31+12331**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.32+12332**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -72,7 +72,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.31`（versionCode `12331`），下一次是 `1.3.32`（`12332`）。
+只把修订号加 1：当前 `1.3.32`（versionCode `12332`），下一次是 `1.3.33`（`12333`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
@@ -133,7 +133,7 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 
 分身用的是 Alter Ego 本身的系统权限。1.3.28 起危险权限按宿主的授权结果返回：Alter Ego 已允许 → 查询结果是允许；还没允许 → 打开分身前先弹系统授权窗。系统拒绝后不会被记成允许。1.3.30 曾对 AppOps 的 CAMERA **无条件返回允许**，1.3.31 改回：只有宿主确实已授权才短路，拒绝或读不到结果时交给系统。
 
-黑屏在 1.3.28、1.3.29、1.3.30 的 K80 上仍然存在，1.3.31 **没有**再改相机服务的参数改写，也不声称已经修好。打包的 Bcore 没有 `ICameraService` 代理，native 库也不挂钩相机；Camera1 / NDK 会绕过 Java 代理。请到 **设置 → 相机自检**，清空日志 → 打开分身进首页和扫码页 → 回来刷新并复制。日志里要有 `win@`（`e2e`、`manual`、`pad`）和 `-> connect`。1.3.31 不再在分身里主动 `openCamera`。
+**1.3.32 已找到并修复根因（有日志和 AOSP 源码证据）**：K80 的相机日志里每次 `connectDevice` 都被拒绝，报 `errorNotTrusted: Untrusted caller (calling PID 7421, UID 10316) trying to forward camera access ... (PID -1, UID 10316)`。Android 16 的 `CameraManager.getClientAttribution()` 本来发的是 `uid = USE_CALLING_UID(-1)`、`pid = USE_CALLING_PID(-1)`，让相机服务按 Binder 调用方自己认人；1.3.28–1.3.31 的 `media.camera` 代理把它改成了宿主 uid 10316 和真实 pid。Android 16 相机服务（`AttributionAndPermissionUtils::resolveClientUid`）对非系统应用只认 `-1`，传显式 uid（哪怕就是自己）也当作「替别人转发相机」直接拒绝，所以预览全黑、扫码应用以为没权限。1.3.32 起顶层 uid/pid 交回 `-1`，包名仍是宿主；改写前先复制一份，不污染 Context 自己的身份。Camera1（`android.hardware.Camera`）在 native 里本来就发 `-1`，不受影响。相机自检里的分身日志新增 `attr` 行，记录改写前后真正发出的身份（含 next 链）。
 
 **无障碍服务过一段时间自己关了（1.3.27 常驻模式）**
 
