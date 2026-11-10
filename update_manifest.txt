@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.30",
-  "versionCode": 14330,
-  "apkUrl": "https://link.liunianai.cn/f/disk/um0uhpmbxhrcpolitpxfxba959/parallel_space_v1.3.30_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/jvfm5y",
-  "sha256": "6734ab9833b79f2d77a54cf6e231674515cc6129fac34aa20ef05389a909bf56",
+  "versionName": "1.3.31",
+  "versionCode": 14331,
+  "apkUrl": "https://link.liunianai.cn/f/disk/n3jhnqf7mvfzecsu70h7tgwtly/parallel_space_v1.3.31_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/tygbqt",
+  "sha256": "224825f8b88da2286a89b36bb41ad0a732d2363e076eb7af73b8f4b780ce98a7",
   "size": 21475948,
-  "notes": "1.3.30：修复分身顶栏与状态栏重叠（顶部按钮点不到）；加强分身相机 AppOps/AttributionSource，扫码黑屏继续修。",
-  "publishedAt": "2026-11-06T23:42:51+08:00"
+  "notes": "1.3.31：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "publishedAt": "2026-11-10T11:10:14+08:00"
 }
