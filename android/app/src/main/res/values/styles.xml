@@ -28,9 +28,10 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <!-- 覆盖 Bcore 的 BTheme：分身 ProxyActivity 用。
-         targetSdk 36 下系统默认 edge-to-edge，透明 NoTitleBar 会让分身顶栏钻进状态栏。
-         运行时 CloneWindowFix 还会再强制 decorFitsSystemWindows。 -->
+    <!-- 覆盖 Bcore 的 BTheme：只作用于 ProxyActivity 自己的窗口。
+         客户 Activity 的主题在启动时被换成客户包的 ActivityInfo，不读这个 style。
+         API 36 上 windowOptOutEdgeToEdgeEnforcement 对 targetSdk 36 无效。
+         顶栏间距由 CloneWindowFix 按真实 insets 给 content 加 padding。 -->
     <style name="BTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@android:color/white</item>
         <item name="android:windowDisablePreview">true</item>

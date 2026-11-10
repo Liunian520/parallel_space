@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.30-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.31-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -64,7 +64,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.30+12330**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.31+12331**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -72,7 +72,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.30`（versionCode `12330`），下一次是 `1.3.31`（`12331`）。
+只把修订号加 1：当前 `1.3.31`（versionCode `12331`），下一次是 `1.3.32`（`12332`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
@@ -125,11 +125,15 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 
 先在工具箱里打开开关。各厂商的悬浮窗页面不同，都会先试厂商页，失败再试系统的「显示在其他应用上层」。1.3.9 起会用 `/proc` 兜底识别 `:p0`、`:p1` …，并在打开分身后较长时间内保持气泡。**1.3.12** 起：账号的添加/编辑只在 App「密码本」页完成；悬浮窗只读。**1.3.13** 起：复制按钮在账号/密码行右侧，一键填入在卡片底部全宽。**1.3.14** 起：展开面板会夹到屏内，修复「点了像没点其实是 outside_tap」；密码本变更不再走系统广播。**1.3.15** 起：修复面板重建死循环导致整块点不动；诊断日志可「复制最近 50 行」。保留 tick 防抖与 AppOps 交叉验证。**1.3.18** 起：悬浮工具箱密码本列出全部账号（按备注名），点进详情再复制/一键填入。**1.3.17** 起：一键填入先清空再写入，避免叠字；添加分身页对已有分身的应用可「再开一个」。**1.3.16** 起：同一应用可「再分身一个」，每个分身数据独立、可单独改名；最近任务不再显示「[B0]」而是分身名；无障碍未开时可一键直达本应用的无障碍开关页（Android 13+ 侧载会先引导「允许受限制的设置」）。若小球仍消失，到 **设置 → 工具箱诊断日志** 复制内容反馈（日志里有 `reason=` / `tick deny`）。
 
-**分身里扫码要相机权限 / 相机黑屏（1.3.28 已修）**
+**分身顶栏和状态栏图标叠在一起（1.3.31）**
 
-分身用的是 Alter Ego 本身的系统权限。1.3.28 起分身里的相机、麦克风、定位、存储、通讯录等权限直接跟随 Alter Ego：Alter Ego 已允许 → 分身直接可用；还没允许 → 打开分身前先弹系统授权窗，允许一次即可。旧版本里已经打开的分身需要彻底关掉（最近任务划掉）再从 Alter Ego 打开。
+1.3.30 用 `decorFitsSystemWindows=true` 和 BTheme 的 opt-out 去挪顶栏。在 Android 16（REDMI K80 HyperOS `3.0.309.0.WOKCNXM` 的固件是 Android 16）上，系统会忽略 targetSdk 36 的 opt-out，并且 `setDecorFitsSystemWindows(true)` 在已经强制 edge-to-edge 的窗口上直接返回。BTheme 也只作用于 ProxyActivity，客户 Activity 用的是自己的主题。1.3.31 在状态栏仍然可见时，按状态栏、刘海和导航栏的真实 insets 给内容区加 padding；状态栏被真正隐藏的全屏（游戏、视频）不加。扫码预览会跟内容一起下移，不再画进状态栏；这是为了让返回、标题、相册和「切换扫码工具」能点到。
 
-1.3.30 起分身顶栏不再钻进状态栏（targetSdk 36 的 edge-to-edge 已对非全屏页关闭）；相机侧加强了 AppOps CAMERA 放行与 AttributionSource 改写，分身首次打开会自动探测相机并写日志。仍然黑屏时：到 **设置 → 相机自检**，清空日志 → 打开分身扫一次 → 回来刷新并复制日志反馈。
+**分身里扫码黑屏**
+
+分身用的是 Alter Ego 本身的系统权限。1.3.28 起危险权限按宿主的授权结果返回：Alter Ego 已允许 → 查询结果是允许；还没允许 → 打开分身前先弹系统授权窗。系统拒绝后不会被记成允许。1.3.30 曾对 AppOps 的 CAMERA **无条件返回允许**，1.3.31 改回：只有宿主确实已授权才短路，拒绝或读不到结果时交给系统。
+
+黑屏在 1.3.28、1.3.29、1.3.30 的 K80 上仍然存在，1.3.31 **没有**再改相机服务的参数改写，也不声称已经修好。打包的 Bcore 没有 `ICameraService` 代理，native 库也不挂钩相机；Camera1 / NDK 会绕过 Java 代理。请到 **设置 → 相机自检**，清空日志 → 打开分身进首页和扫码页 → 回来刷新并复制。日志里要有 `win@`（`e2e`、`manual`、`pad`）和 `-> connect`。1.3.31 不再在分身里主动 `openCamera`。
 
 **无障碍服务过一段时间自己关了（1.3.27 常驻模式）**
 

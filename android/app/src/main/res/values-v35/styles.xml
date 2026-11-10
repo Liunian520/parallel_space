@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android 15+ 临时退出 edge-to-edge（属性将在未来版本废弃，运行时 CloneWindowFix 仍保底） -->
+    <!-- ProxyActivity 在 API 35 上的临时 opt-out。客户 Activity 不使用本主题。
+         API 36 + targetSdk 36 时系统忽略 windowOptOutEdgeToEdgeEnforcement。 -->
     <style name="BTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@android:color/white</item>
         <item name="android:windowDisablePreview">true</item>

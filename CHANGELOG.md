@@ -1,6 +1,33 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.30（versionCode 12330），下一次是 1.3.31（12331）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.31（versionCode 12331），下一次是 1.3.32（12332）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.31] - 2026-11-06
+
+### 修复（有代码和系统文档证据）
+
+- **分身顶栏仍和状态栏图标同一行、点不到**。用户机是 REDMI K80，系统版本 `3.0.309.0.WOKCNXM`（截图）。该版本号对应官方固件包 `zorn-ota_full-OS3.0.309.0.WOKCNXM-user-16.0`，即 Android 16 / API 36。1.3.28、1.3.29、1.3.30 在这台机器上顶栏都没挪开。1.3.30 的做法对不上实际执行路径：
+  1. `BTheme` 的 `windowOptOutEdgeToEdgeEnforcement` 只写在 ProxyActivity 的主题上。当前 `bcore-release.aar` 里 `AppInstrumentation.checkActivity` 会在客户 `onCreate` 之前调用 `ActivityCompat.fix`，并把客户 `ActivityInfo.theme` 套到窗口上。客户界面不读我们的 BTheme。Android 16 文档还写明：targetSdk 36 跑在 Android 16 上时，这个 opt-out 属性被禁用。
+  2. AOSP `PhoneWindow.setDecorFitsSystemWindows` 在 `mEdgeToEdgeEnforced == true` 时直接 `return`。1.3.30 的 `WindowCompat.setDecorFitsSystemWindows(window, true)` 在已被强制 edge-to-edge 的窗口上不改布局。
+  3. `beforeMainActivityOnCreate` / `afterMainActivityOnCreate` 在这份 AAR 里只有定义、没有调用点，1.3.30 挂在这两个回调上的逻辑不会跑。会跑的是 `BaseInstrumentationDelegate.callActivityOnCreate` / `callActivityOnResume`，而且是在客户 `onCreate` / `onResume` **之后**。
+  4. 客户主题若带 `windowFullscreen`，`ActivityCompat.fix` 会先加上 `FLAG_FULLSCREEN`（值为 1024）。1.3.30 看到这个旗标就当沉浸式跳过。edge-to-edge 下状态栏图标仍然画着，所以扫码页的返回、标题、相册、「切换扫码工具」会和状态栏图标同一高度，点下去点到的是状态栏。
+- **1.3.31 的做法**：读窗口上的 `mEdgeToEdgeEnforced`。为真（或 API ≥ 35 但读不到该字段）时，不再依赖 `decorFitsSystemWindows`。状态栏仍可见时，给 `android.R.id.content` 加上 `max(statusBars.top, displayCutout.top)` 的上边距；导航栏可见时加下边距；左右取系统栏和刘海的较大值。只有边距不是 0 才吃掉 systemBars / displayCutout，避免客户再加一遍；系统把 insets 报成 0 时不吞。状态栏和导航栏都不可见（游戏、视频真全屏）不加边距。`FLAG_FULLSCREEN` 不再单独当成全屏。未强制 edge-to-edge 的旧系统仍走原来的 `decorFitsSystemWindows=true`，避免双边距。
+- 决策在 `CloneInsetPolicy` / `CameraOpDecision`，由 `CloneInsetPolicyTest` 覆盖（不需要 Android SDK）。
+
+### 相机（这次不把黑屏当成已经修好）
+
+- 1.3.28–1.3.30 的扫码预览黑屏在这台 K80 上仍然存在。仓库里没有该机的 `camera_diag.log`，不能证明是 native 绕过、AppOps、还是预览 Surface。因此 **没有再改** `media.camera` 的参数改写。
+- 已核对打包进去的 `bcore-release.aar`：`HookManager.init` 没有 `ICameraService` 代理；`jni/arm64-v8a/libblackbox.so` 里没有 camera 字符串。`android.hardware.Camera` 和 NDK 相机在 native 里连 `media.camera`，不经过 Java `ServiceManager` 缓存。这是虚拟引擎的架构限制，不是本版本能用单测证明修好的。
+- 1.3.30 的 `CameraOpHook` 对名字含 CAMERA 的 `noteOp*` **无条件返回 MODE_ALLOWED**。宿主被系统拒绝时这是假授权。Bcore 自己的 `noteOperation` / `noteProxyOperation` 也对所有 op 直接返回 0。1.3.31 只有 `BlackBoxCore.getContext().checkSelfPermission(CAMERA)` 确认为已允许才短路；拒绝或读不到结果时改写身份后走系统，不再落回那个无条件允许。
+- 1.3.30 在分身第一次 `onResume` 里 `openCamera` 最多等 3 秒，可能和扫码抢相机。1.3.28/29 没有这段也黑屏，所以这不是黑屏根因。1.3.31 只把相机 id、`opPackageName`、`sdk`、`targetSdk` 写入 `files/camera_diag.log`，不再打开相机。
+
+### 还需要的日志（没有这些就不能判断黑屏）
+
+在 1.3.31 上：设置 → 相机自检 → 清空日志 → 打开出问题的分身，进首页再进扫码页 → 回来刷新并复制。需要能看到 `win@created` / `win@resume`（里面有 `e2e=`、`manual=`、`target=`）、`win@insets`（`statusVisible=`、`pad=`）以及 `-> connect`。没有 `win@` 说明窗口回调没跑到；没有 `connect` 说明这次扫码没走 Java `media.camera` 代理。
+
+### 其他
+
+- 版本 `1.3.31+12331`（arm64 versionCode 14331）。安装包由现有打包机编译上传，本次变更不包含发布包。
 
 ## [1.3.30] - 2026-11-06
 

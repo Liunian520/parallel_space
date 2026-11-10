@@ -14,7 +14,7 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
 /**
- * 分身进程里的运行时权限 / 相机修复（1.3.28–1.3.30）。
+ * 分身进程里的运行时权限 / 相机修复（1.3.28–1.3.31）。
  *
  * 根因：
  * - 分身进程真实 uid 是宿主 uid，但 Bcore 把 Binder 调用里的 uid 换成虚拟 BUid、包名是分身包名。
@@ -24,8 +24,9 @@ import java.lang.reflect.Method
  * - Bcore 的 AppOps NoteOp 只对麦克风类 op 直接放行，CAMERA 的 noteOp 仍带分身身份走系统 →
  *   部分机型（尤其 HyperOS）在 connect 成功后 noteOp 失败，画面仍黑。
  *
- * 1.3.30：AppOps CAMERA 放行；AttributionSource / State 更彻底；包名按「像包名」替换；
- * 分身进程首次 resume 时做一次轻量相机探测写进诊断日志。
+ * 1.3.30：AppOps CAMERA 曾无条件 MODE_ALLOWED。宿主拒绝时那是假授权，1.3.31 去掉。
+ * 分身第一次 resume 只记录相机 id，不再 openCamera（1.3.30 的探测会占住相机，
+ * 但 1.3.28/29 没有这段也黑屏，所以这不是黑屏根因）。
  */
 object ClonePermissionFix {
     private const val TAG = "ClonePermFix"
@@ -188,49 +189,46 @@ object ClonePermissionFix {
         }
     }
 
-    /** 分身进程首次 resume：列相机、试开后置，结果写入 camera_diag.log。 */
-    @android.annotation.SuppressLint("MissingPermission")
+    /**
+     * 分身进程首次 resume：只列相机 id 和包名，不 openCamera。
+     * 1.3.30 在这里打开相机会和扫码抢设备；1.3.28/29 没有打开也黑屏，所以打开不能当修复。
+     */
     private fun probeOnce(act: android.app.Activity) {
         if (probed) return
         probed = true
         Thread({
             try {
                 val host = BlackBoxCore.getHostPkg()
+                val target = try { act.applicationInfo.targetSdkVersion } catch (_: Throwable) { -1 }
                 val cm = act.applicationContext.getSystemService(android.hardware.camera2.CameraManager::class.java)
                 val ids = try { cm.cameraIdList.toList() } catch (t: Throwable) {
                     CameraDiag.log("probe getCameraIdList FAIL $t"); return@Thread
                 }
-                CameraDiag.log("probe ids=${ids.joinToString()} op=${try { act.opPackageName } catch (_: Throwable) { "?" }} host=$host")
-                if (ids.isEmpty()) return@Thread
-                val id = ids.first()
-                val opened = java.util.concurrent.CountDownLatch(1)
-                var err: String? = null
-                var ok = false
-                val ht = android.os.HandlerThread("cam-probe").apply { start() }
-                val h = android.os.Handler(ht.looper)
-                try {
-                    cm.openCamera(id, object : android.hardware.camera2.CameraDevice.StateCallback() {
-                        override fun onOpened(c: android.hardware.camera2.CameraDevice) {
-                            ok = true; c.close(); opened.countDown()
-                        }
-                        override fun onDisconnected(c: android.hardware.camera2.CameraDevice) {
-                            err = "disconnected"; c.close(); opened.countDown()
-                        }
-                        override fun onError(c: android.hardware.camera2.CameraDevice, e: Int) {
-                            err = "error=$e"; c.close(); opened.countDown()
-                        }
-                    }, h)
-                    opened.await(3, java.util.concurrent.TimeUnit.SECONDS)
-                    CameraDiag.log(if (ok) "probe openCamera($id) OK" else "probe openCamera($id) FAIL ${err ?: "timeout"}")
-                } catch (t: Throwable) {
-                    CameraDiag.log("probe openCamera FAIL $t")
-                } finally {
-                    ht.quitSafely()
-                }
+                CameraDiag.log(
+                    "probe ids=${ids.joinToString()} op=${try { act.opPackageName } catch (_: Throwable) { "?" }} " +
+                        "host=$host sdk=${Build.VERSION.SDK_INT} target=$target open=skipped"
+                )
             } catch (t: Throwable) {
                 CameraDiag.log("probe FAIL $t")
             }
         }, "alterego-cam-probe").start()
+    }
+
+    /** 宿主上下文上的真实授权。读不到就返回 null，调用方不得据此放行。 */
+    private fun hostCameraGranted(): Boolean? = try {
+        val ctx = BlackBoxCore.getContext() ?: return null
+        ctx.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    } catch (_: Throwable) { null }
+
+    private var cameraOpLogs = 0
+
+    private fun logCameraOp(msg: String) {
+        synchronized(this) {
+            if (cameraOpLogs >= 8) return
+            cameraOpLogs++
+        }
+        CameraDiag.log(msg)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -290,15 +288,32 @@ object ClonePermissionFix {
         }
     }
 
-    /** AppOps 的 noteOp*：CAMERA 直接 MODE_ALLOWED，避免带分身身份记 op 被拒。 */
+    /**
+     * AppOps 的 noteOp*：只有宿主确实已授权时才把 CAMERA 短路成 MODE_ALLOWED。
+     * 系统拒绝或读不到结果时不改返回值。
+     */
     private class CameraOpHook(private val old: MethodHook?) : MethodHook() {
         override fun hook(who: Any?, method: Method, args: Array<Any?>?): Any? {
             val opName = opPublicName(args)
-            if (opName != null && opName.uppercase().contains("CAMERA")) {
-                CameraDiag.log("AppOps ${method.name} $opName → ALLOWED")
-                return 0 // AppOpsManager.MODE_ALLOWED
+            val cameraOp = opName != null && opName.uppercase().contains("CAMERA")
+            if (cameraOp) {
+                val granted = hostCameraGranted()
+                val forced = CameraOpDecision.forceModeAllowed(true, granted)
+                if (forced != null) {
+                    logCameraOp("AppOps ${method.name} $opName → ALLOWED hostGranted=true")
+                    return forced
+                }
+                // 不交给 Bcore 的 NoteOperation / NoteProxyOperation：它们对所有 op 直接返回 0。
+                // 拒绝或未知时改写身份后走系统，由系统决定。
+                logCameraOp("AppOps ${method.name} $opName hostGranted=$granted — system")
+                if (args != null) {
+                    try { rewriteAppOpsArgs(args) } catch (_: Throwable) {}
+                }
+                return try {
+                    method.invoke(who, *(args ?: emptyArray()))
+                } catch (e: InvocationTargetException) { throw e.cause ?: e }
             }
-            // 顺手把参数里的分身包名 / 虚拟 uid 换成宿主，再交给原 hook / 系统
+            // 非相机：把分身包名 / 虚拟 uid 换成宿主，再交给原来的 hook。
             if (args != null) {
                 try { rewriteAppOpsArgs(args) } catch (_: Throwable) {}
             }
