@@ -314,6 +314,35 @@ class CloneStore extends ChangeNotifier {
   }
 
   /// 系统中新增了应用（复制成功后，不必等待完整刷新）。
+  /// 恢复分身数据后写入主屏列表，并套上原来的备注名。
+  void adoptRestored({
+    required String packageName,
+    required int userId,
+    required String appName,
+    String? customLabel,
+    String version = '',
+  }) {
+    if (isPresetPackage(packageName, label: appName)) return;
+    var c = byInstance(packageName, userId);
+    if (c == null) {
+      c = CloneApp(
+        uid: CloneApp.uidFor(packageName, userId),
+        packageName: packageName,
+        appName: appName.isEmpty ? packageName : appName,
+        userId: userId,
+        version: version,
+        customLabel: customLabel,
+        userAdded: true,
+      );
+      _clones.add(c);
+    } else {
+      if (appName.isNotEmpty) c.appName = appName;
+      if (customLabel != null && customLabel.trim().isNotEmpty) c.customLabel = customLabel.trim();
+      c.userAdded = true;
+    }
+    _changed();
+  }
+
   void addFromApp(AppInfo a) {
     if (isPresetPackage(a.packageName, label: a.name)) return;
     if (byInstance(a.packageName, a.userId) != null) return;

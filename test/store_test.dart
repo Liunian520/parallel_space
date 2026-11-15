@@ -404,4 +404,17 @@ void main() {
       }, initialTime: DateTime(2026));
     });
   });
+
+  group('adoptRestored', () {
+    test('本机没有则加入列表并套上备注，已有则更新备注', () async {
+      final s = await readyStore(['com.t.old']);
+      s.adoptRestored(packageName: 'com.t.app', userId: 1, appName: 'App', customLabel: '出差');
+      final created = s.byInstance('com.t.app', 1)!;
+      expect(created.userAdded, isTrue);
+      expect(created.customLabel, '出差');
+      expect(created.uid, 'w:com.t.app#1');
+      s.adoptRestored(packageName: 'com.t.app', userId: 1, appName: 'App', customLabel: '出差-改');
+      expect(s.byInstance('com.t.app', 1)!.customLabel, '出差-改');
+    });
+  });
 }

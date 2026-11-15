@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
+import java.io.File
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.app.configuration.ClientConfiguration
 import top.niunaijun.blackbox.entity.pm.InstallResult
@@ -216,6 +217,37 @@ object VirtualEngine {
             } else {
                 mapOf("r" to "error", "detail" to "launchApk returned false")
             }
+        } catch (t: Throwable) {
+            mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+
+    /** 停止这个实例里正在跑的进程，备份/覆盖数据前调用。 */
+    fun stop(pkg: String, userId: Int = USER): Map<String, Any?> {
+        if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
+        return try {
+            BlackBoxCore.get().stopPackage(pkg, userId)
+            mapOf("r" to "ok")
+        } catch (t: Throwable) {
+            mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** 从 APK 文件安装到指定虚拟用户（换机恢复用）。 */
+    fun installFromFile(apk: File, userId: Int): Map<String, Any?> {
+        if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
+        if (!apk.isFile) return mapOf("r" to "missing", "detail" to "找不到安装包")
+        return try {
+            val target = if (userId < 0) 0 else userId
+            ensureUser(target)
+            val result: InstallResult = BlackBoxCore.get().installPackageAsUser(apk, target)
+            if (result.success) mapOf("r" to "ok", "detail" to (result.packageName ?: apk.name), "userId" to target)
+            else mapOf(
+                "r" to "rejected",
+                "detail" to (result.msg ?: "install from apk failed"),
+                "userId" to target,
+            )
         } catch (t: Throwable) {
             mapOf("r" to "error", "detail" to "${t.javaClass.simpleName}: ${t.message}")
         }

@@ -437,4 +437,47 @@ class NativeBridge {
   static Future<String> toolboxCrashLogClear() async => await _call<String>('toolboxCrashLogClear') ?? 'error';
 
   static Future<String> toolboxCrashLogShare() async => await _call<String>('toolboxCrashLogShare') ?? 'error';
+
+  // ---------------- 分身数据备份（二进制，不走 2MB JSON 通道） ----------------
+  static const _progress = EventChannel('parallel_space/clone_data_progress');
+
+  static Stream<Map<String, dynamic>> cloneDataProgress() =>
+      _progress.receiveBroadcastStream().map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{});
+
+  static Future<Map<String, dynamic>> packCloneData({
+    required List<Map<String, Object?>> items,
+    required String name,
+    required String appVersion,
+  }) async {
+    final m = await _call<Map>('packCloneData', {'items': items, 'name': name, 'appVersion': appVersion});
+    return m == null ? {'r': _android ? 'error' : 'unsupported'} : Map<String, dynamic>.from(m);
+  }
+
+  /// 'ok' | 'cancelled' | 'error'
+  static Future<String> saveBinaryFile(String path, String name) async =>
+      await _call<String>('saveBinaryFile', {'path': path, 'name': name}) ?? 'error';
+
+  static Future<String> shareBinaryFile(String path, String name) async =>
+      await _call<String>('shareBinaryFile', {'path': path, 'name': name}) ?? 'error';
+
+  /// 选中备份文件后复制到缓存并返回路径；取消返回 null。
+  static Future<String?> openBinaryFile() => _call<String>('openBinaryFile');
+
+  static Future<Map<String, dynamic>> previewCloneData(String path) async {
+    final m = await _call<Map>('previewCloneData', {'path': path});
+    return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
+  }
+
+  static Future<Map<String, dynamic>> restoreCloneData({
+    required String path,
+    required String mode,
+    required List<String> existingLabels,
+  }) async {
+    final m = await _call<Map>('restoreCloneData', {
+      'path': path,
+      'mode': mode,
+      'existingLabels': existingLabels,
+    });
+    return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
+  }
 }

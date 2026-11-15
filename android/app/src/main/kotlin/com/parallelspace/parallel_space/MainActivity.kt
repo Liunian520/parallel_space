@@ -25,6 +25,7 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.net.toUri
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
@@ -41,6 +42,7 @@ class MainActivity : FlutterFragmentActivity() {
     /** 等待 Activity 结果的 Flutter 调用（每个请求码最多一个）。 */
     private val pending = HashMap<Int, MethodChannel.Result>()
     private var pendingSaveContent: String? = null
+    private var pendingSavePath: String? = null
     private var pendingWorkOp: Triple<String, String, Boolean>? = null // op, pkg, flag
     private var mockCallback: (() -> Unit)? = null
 
@@ -75,6 +77,16 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel = ch
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, PROGRESS_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    CloneDataBackup.progressListener = { ev -> events?.success(ev) }
+                }
+                override fun onCancel(arguments: Any?) {
+                    CloneDataBackup.progressListener = null
+                }
+            },
+        )
         val cb: () -> Unit = { runOnUiThread { channel?.invokeMethod("mockChanged", null) } }
         mockCallback = cb
         MockLocationService.onStateChanged = cb
@@ -215,6 +227,38 @@ class MainActivity : FlutterFragmentActivity() {
                     "saveFile" -> saveFile(result, call.argument<String>("name")!!, call.argument<String>("content")!!)
                     "shareFile" -> result.success(shareFile(call.argument<String>("name")!!, call.argument<String>("content")!!))
                     "openFile" -> openFile(result)
+                    "packCloneData" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val raw = call.argument<List<Map<String, Any?>>>("items") ?: emptyList()
+                        val items = raw.mapNotNull { m ->
+                            val pkg = m["pkg"] as? String ?: return@mapNotNull null
+                            CloneDataBackup.Item(
+                                packageName = pkg,
+                                userId = (m["userId"] as? Number)?.toInt() ?: 0,
+                                customLabel = m["customLabel"] as? String,
+                                appName = m["appName"] as? String ?: pkg,
+                            )
+                        }
+                        val name = (call.argument<String>("name") ?: "alter_ego_data.aebak").replace(Regex("[^A-Za-z0-9._-]"), "_")
+                        val appVer = call.argument<String>("appVersion") ?: ""
+                        background(result) {
+                            val dir = File(cacheDir, "backup").apply { mkdirs() }
+                            CloneDataBackup.pack(this, items, File(dir, name), appVer)
+                        }
+                    }
+                    "saveBinaryFile" -> saveBinaryFile(result, call.argument<String>("path")!!, call.argument<String>("name") ?: "alter_ego_data.aebak")
+                    "shareBinaryFile" -> result.success(shareBinaryFile(call.argument<String>("path")!!, call.argument<String>("name") ?: "alter_ego_data.aebak"))
+                    "openBinaryFile" -> openBinaryFile(result)
+                    "previewCloneData" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        background(result) { CloneDataBackup.preview(File(path)) }
+                    }
+                    "restoreCloneData" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        val mode = call.argument<String>("mode") ?: "overwrite"
+                        val labels = call.argument<List<String>>("existingLabels") ?: emptyList()
+                        background(result) { CloneDataBackup.restore(this, File(path), mode, labels) }
+                    }
                     // ---- 小组件 ----
                     "updateWidget" -> {
                         @Suppress("UNCHECKED_CAST")
@@ -583,6 +627,57 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+
+    private fun saveBinaryFile(result: MethodChannel.Result, path: String, name: String) {
+        pending.remove(REQ_SAVE_BIN)?.success("cancelled")
+        val src = File(path)
+        if (!src.isFile) {
+            result.success("error")
+            return
+        }
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, name)
+        try {
+            pendingSavePath = path
+            pending[REQ_SAVE_BIN] = result
+            @Suppress("DEPRECATION")
+            startActivityForResult(i, REQ_SAVE_BIN)
+        } catch (e: ActivityNotFoundException) {
+            pending.remove(REQ_SAVE_BIN)
+            pendingSavePath = null
+            result.success("error")
+        }
+    }
+
+    private fun shareBinaryFile(path: String, name: String): String {
+        val src = File(path)
+        if (!src.isFile) return "error"
+        val dir = File(cacheDir, "backup").apply { mkdirs() }
+        val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val f = if (src.parentFile?.canonicalPath == dir.canonicalPath) src else src.copyTo(File(dir, safe), overwrite = true)
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", f)
+        val send = Intent(Intent.ACTION_SEND).setType("application/octet-stream")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_SUBJECT, safe)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivity(Intent.createChooser(send, "分享分身数据备份").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        return "ok"
+    }
+
+    private fun openBinaryFile(result: MethodChannel.Result) {
+        pending.remove(REQ_OPEN_BIN)?.success(null)
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/zip", "*/*"))
+        try {
+            pending[REQ_OPEN_BIN] = result
+            @Suppress("DEPRECATION")
+            startActivityForResult(i, REQ_OPEN_BIN)
+        } catch (e: ActivityNotFoundException) {
+            pending.remove(REQ_OPEN_BIN)
+            result.success(null)
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -620,6 +715,50 @@ class MainActivity : FlutterFragmentActivity() {
                         r.success(String(bytes, Charsets.UTF_8))
                     }
                 }
+                REQ_SAVE_BIN -> {
+                    val srcPath = pendingSavePath
+                    pendingSavePath = null
+                    val uri = data?.data
+                    if (resultCode != Activity.RESULT_OK || uri == null || srcPath.isNullOrEmpty()) {
+                        r.success("cancelled")
+                    } else {
+                        io.execute {
+                            val code = try {
+                                val src = File(srcPath)
+                                if (!src.isFile) "error"
+                                else {
+                                    contentResolver.openOutputStream(uri, "w")?.use { out ->
+                                        src.inputStream().use { it.copyTo(out) }
+                                    } ?: throw IllegalStateException("无法写入")
+                                    "ok"
+                                }
+                            } catch (e: Exception) {
+                                "error"
+                            }
+                            runOnUiThread { r.success(code) }
+                        }
+                    }
+                }
+                REQ_OPEN_BIN -> {
+                    val uri = data?.data
+                    if (resultCode != Activity.RESULT_OK || uri == null) {
+                        r.success(null)
+                    } else {
+                        io.execute {
+                            val path = try {
+                                val dir = File(cacheDir, "backup").apply { mkdirs() }
+                                val dest = File(dir, "import_${System.currentTimeMillis()}.aebak")
+                                contentResolver.openInputStream(uri)?.use { input ->
+                                    dest.outputStream().use { input.copyTo(it) }
+                                } ?: throw IllegalStateException("无法读取")
+                                dest.absolutePath
+                            } catch (e: Exception) {
+                                null
+                            }
+                            runOnUiThread { r.success(path) }
+                        }
+                    }
+                }
                 REQ_PROVISION -> {
                     WorkProfile.invalidate()
                     if (resultCode == Activity.RESULT_OK) WorkProfile.rememberOwned(this)
@@ -646,7 +785,7 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> r.success(null)
             }
         } catch (e: Exception) {
-            r.success(if (requestCode == REQ_OPEN) null else "error")
+            r.success(if (requestCode == REQ_OPEN || requestCode == REQ_OPEN_BIN) null else "error")
         }
     }
 
@@ -703,7 +842,10 @@ class MainActivity : FlutterFragmentActivity() {
         private const val REQ_WORK_SUSPEND = 45
         private const val REQ_WORK_HIDE = 46
         private const val REQ_WIPE = 47
+        private const val REQ_SAVE_BIN = 48
+        private const val REQ_OPEN_BIN = 49
         private const val MAX_IMPORT = 2 * 1024 * 1024
+        const val PROGRESS_CHANNEL = "parallel_space/clone_data_progress"
 
         /** 快捷方式 / 小组件共用的分身深链 Intent。 */
         fun cloneLaunchIntent(ctx: Context, id: String): Intent =

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../config/app_version.dart';
 import '../services/backup_service.dart';
+import '../services/clone_data_backup.dart';
 import '../services/update_service.dart';
 import '../widgets/update_sheet.dart';
 import '../services/clone_actions.dart';
@@ -129,16 +130,28 @@ class SettingsScreen extends StatelessWidget {
           SectionCard(title: '备份与迁移', children: [
             GlassTile(
               icon: Icons.save_alt_rounded,
-              title: '导出到文件',
-              subtitle: '分身、收藏位置、自建路线、设置（不含 PIN）',
+              title: '导出配置到文件',
+              subtitle: '分身名单、备注、收藏位置、设置（不含登录数据和 PIN）',
               onTap: () => exportBackup(context, share: false),
             ),
-            GlassTile(icon: Icons.share_rounded, title: '分享备份', onTap: () => exportBackup(context, share: true)),
+            GlassTile(icon: Icons.share_rounded, title: '分享配置备份', onTap: () => exportBackup(context, share: true)),
             GlassTile(
               icon: Icons.settings_backup_restore_rounded,
-              title: '导入备份',
-              subtitle: '校验文件后可选择合并或覆盖',
+              title: '导入配置备份',
+              subtitle: '校验文件后可选择合并或覆盖，不会恢复登录状态',
               onTap: () => importBackup(context),
+            ),
+            GlassTile(
+              icon: Icons.folder_zip_rounded,
+              title: '备份分身数据',
+              subtitle: '导出某个或全部分身的应用数据和登录状态，换机或重装后可恢复',
+              onTap: () => exportCloneData(context),
+            ),
+            GlassTile(
+              icon: Icons.restore_rounded,
+              title: '恢复分身数据',
+              subtitle: '从备份文件恢复。已有分身可覆盖或再新建一份',
+              onTap: () => importCloneData(context),
             ),
           ]),
           const SectionCard(title: '桌面与快捷开关', children: [
