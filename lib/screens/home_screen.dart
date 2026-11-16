@@ -120,6 +120,9 @@ class HomeScreen extends StatelessWidget {
         onPin: (c) => pinCloneToHome(context, c),
         onRename: (c) => renameClone(context, c),
         onAnother: (c) => cloneAnotherInstance(context, c),
+        onOpenPackage: (c) => openPackage(Navigator.of(context), c.packageName),
+        showPackageLaunch: (c) => store.instancesOf(c.packageName).length > 1,
+        isDefault: store.isDefaultClone,
         mockingUid: store.mockingUid,
         onDelete: (c) async {
           if (!await confirmDelete(context, c) || !context.mounted) return;

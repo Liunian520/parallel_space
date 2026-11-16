@@ -19,6 +19,9 @@ class ReorderableCloneGrid extends StatefulWidget {
     required this.onPin,
     this.onRename,
     this.onAnother,
+    this.onOpenPackage,
+    this.showPackageLaunch,
+    this.isDefault,
     this.mockingUid,
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 140),
   });
@@ -31,6 +34,11 @@ class ReorderableCloneGrid extends StatefulWidget {
   final ValueChanged<CloneApp> onPin;
   final ValueChanged<CloneApp>? onRename;
   final ValueChanged<CloneApp>? onAnother;
+
+  /// 同一应用有多份分身时，未指定具体分身的打开。
+  final ValueChanged<CloneApp>? onOpenPackage;
+  final bool Function(CloneApp clone)? showPackageLaunch;
+  final bool Function(CloneApp clone)? isDefault;
   final String? mockingUid;
   final EdgeInsets padding;
 
@@ -90,6 +98,10 @@ class _ReorderableCloneGridState extends State<ReorderableCloneGrid> {
       onPin: () => widget.onPin(c),
       onRename: widget.onRename == null ? null : () => widget.onRename!(c),
       onAnother: widget.onAnother == null ? null : () => widget.onAnother!(c),
+      onOpenPackage: widget.onOpenPackage != null && (widget.showPackageLaunch?.call(c) ?? false)
+          ? () => widget.onOpenPackage!(c)
+          : null,
+      isDefault: widget.isDefault?.call(c) ?? false,
       mocking: widget.mockingUid == c.uid,
     );
     return RepaintBoundary(

@@ -201,6 +201,10 @@ object VirtualEngine {
         }
     }
 
+    /**
+     * 启动已经点名的 userId。卡片、快捷方式和通知都把实例传进来。
+     * 不读取默认分身；省略时仍是 user 0，和升级前一样。
+     */
     fun launch(pkg: String, userId: Int = USER): Map<String, Any?> {
         if (!ready) return mapOf("r" to "engine_unavailable", "detail" to (lastError ?: "not ready"))
         return try {

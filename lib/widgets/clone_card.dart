@@ -16,6 +16,8 @@ class CloneCard extends StatelessWidget {
     required this.onPin,
     this.onRename,
     this.onAnother,
+    this.onOpenPackage,
+    this.isDefault = false,
     this.mocking = false,
     this.dragging = false,
   });
@@ -27,6 +29,8 @@ class CloneCard extends StatelessWidget {
   final VoidCallback onPin;
   final VoidCallback? onRename;
   final VoidCallback? onAnother;
+  final VoidCallback? onOpenPackage;
+  final bool isDefault;
   final bool mocking;
   final bool dragging;
 
@@ -50,6 +54,16 @@ class CloneCard extends StatelessWidget {
                   ),
                   if (clone.frozen)
                     Positioned.fill(child: Center(child: Icon(Icons.ac_unit_rounded, color: s.primary, size: 24))),
+                  if (isDefault)
+                    Positioned(
+                      right: -6,
+                      bottom: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(color: s.primary, borderRadius: BorderRadius.circular(6)),
+                        child: Text('默认', style: TextStyle(color: s.onPrimary, fontSize: 9, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
                 ]),
               ),
               const Spacer(),
@@ -66,6 +80,7 @@ class CloneCard extends StatelessWidget {
                   'pin' => onPin(),
                   'rename' => onRename?.call(),
                   'another' => onAnother?.call(),
+                  'generic' => onOpenPackage?.call(),
                   _ => onDelete(),
                 },
                 itemBuilder: (_) => [
@@ -75,6 +90,11 @@ class CloneCard extends StatelessWidget {
                     const PopupMenuItem(
                         value: 'another', child: ListTile(leading: Icon(Icons.library_add_rounded), title: Text('再分身一个'))),
                   const PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new_rounded), title: Text('打开'))),
+                  if (onOpenPackage != null)
+                    const PopupMenuItem(
+                      value: 'generic',
+                      child: ListTile(leading: Icon(Icons.star_outline_rounded), title: Text('按默认打开')),
+                    ),
                   const PopupMenuItem(
                       value: 'pin', child: ListTile(leading: Icon(Icons.add_to_home_screen_rounded), title: Text('添加到桌面'))),
                   const PopupMenuItem(

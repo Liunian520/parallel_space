@@ -8,7 +8,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_info.dart';
 import '../models/clone_app.dart';
 import '../services/backup_codec.dart';
+import '../services/default_clone.dart';
 import '../services/native_bridge.dart';
+
+/// 未指定具体分身时的决定。点名打开不走这里。
+class PackageLaunchDecision {
+  const PackageLaunchDecision(this.kind, {this.clone, this.stale = false});
+
+  /// launch | chooser | absent
+  final String kind;
+  final CloneApp? clone;
+
+  /// 记下的默认已经没了，界面要说明不会自动改开另一份。
+  final bool stale;
+}
 
 /// 真实分身状态：分身 = Alter Ego 工作资料中可启动的应用；这里额外保存每个分身的设置（锁、定位、私密、冻结…）。
 ///
@@ -26,10 +39,18 @@ class CloneStore extends ChangeNotifier {
     if (_scrubPresets()) _migrated = true;
     _prefs.setBool('$_key.userOnly', true);
     _prefs.setInt('$_key.listPolicy', 3); // 1.2.3
-    if (_migrated) _save();
+    _loadDefaultPrefs();
+    final defaultsChanged = _pruneDefaults();
+    if (_migrated) {
+      _save();
+    } else if (defaultsChanged) {
+      _persistDefaultPrefs();
+    }
   }
 
   static const _key = 'clones.v1';
+  static const _defaultsKey = 'clone.defaults.v1';
+  static const _askKey = 'clone.defaults.ask';
 
   /// 工作资料常见预装，不应出现在「我的分身」里（用户可通过添加分身显式加入非商店类应用）。
   static const _presetWorkPackages = {
@@ -105,6 +126,8 @@ class CloneStore extends ChangeNotifier {
   }
   final SharedPreferences _prefs;
   final List<CloneApp> _clones = [];
+  final Map<String, String> _defaults = {};
+  final Set<String> _ask = {};
   bool _migrated = false;
 
   /// 持久化后回调（用于同步桌面小组件）。
@@ -198,7 +221,9 @@ class CloneStore extends ChangeNotifier {
   void Function(List<Map<String, Object?>> items)? onNames;
 
   void _save() {
+    _pruneDefaults();
     _prefs.setString(_key, jsonEncode(_clones.map((c) => c.toJson()).toList()));
+    _persistDefaultPrefs();
     onPersisted?.call();
     final cb = onNames;
     if (cb != null) {
@@ -206,6 +231,200 @@ class CloneStore extends ChangeNotifier {
         cb(nameItems());
       } catch (_) {}
     }
+  }
+
+  void _loadDefaultPrefs() {
+    final raw = _prefs.getString(_defaultsKey);
+    if (raw != null) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          for (final e in decoded.entries) {
+            final key = e.key;
+            final value = e.value;
+            if (key is String && value is String && isLaunchKey(value)) _defaults[key] = value;
+          }
+        }
+      } catch (_) {}
+    }
+    final askRaw = _prefs.getString(_askKey);
+    if (askRaw == null) return;
+    try {
+      final decoded = jsonDecode(askRaw);
+      if (decoded is List) {
+        for (final e in decoded) {
+          if (e is String && e.isNotEmpty) _ask.add(e);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// 对不上 launchKey 的默认删掉，并记下来：下次未指定启动要先问，不能改开剩下的那一份。
+  bool _pruneDefaults() {
+    final beforeDefaults = _defaults.length;
+    final beforeAsk = _ask.length;
+    final stale = <String>[];
+    _defaults.removeWhere((pkg, key) {
+      final hits = _clones.where((c) => c.packageName == pkg && c.launchKey == key).length;
+      if (hits == 1) return false;
+      stale.add(pkg);
+      return true;
+    });
+    _ask.addAll(stale);
+    return _defaults.length != beforeDefaults || _ask.length != beforeAsk;
+  }
+
+  void _persistDefaultPrefs() {
+    if (_defaults.isEmpty) {
+      _prefs.remove(_defaultsKey);
+    } else {
+      _prefs.setString(_defaultsKey, jsonEncode(_defaults));
+    }
+    if (_ask.isEmpty) {
+      _prefs.remove(_askKey);
+    } else {
+      _prefs.setString(_askKey, jsonEncode(_ask.toList()));
+    }
+  }
+
+  List<CloneLaunchRef> _launchRefs() => [
+        for (final c in _clones)
+          CloneLaunchRef(
+            uid: c.uid,
+            packageName: c.packageName,
+            userId: c.userId,
+            launchKey: c.launchKey ?? '',
+            label: c.customName,
+          ),
+      ];
+
+  DefaultCloneChoice? _choiceFor(String pkg) {
+    final key = _defaults[pkg];
+    if (key == null || !isLaunchKey(key)) return null;
+    return DefaultCloneChoice(packageName: pkg, launchKey: key);
+  }
+
+  /// 这个包当前的默认分身。对不上标记时返回 null，不按 userId 凑。
+  CloneApp? defaultClone(String pkg) {
+    final key = _defaults[pkg];
+    if (key == null) return null;
+    final hits = _clones.where((c) => c.packageName == pkg && c.launchKey == key).toList();
+    return hits.length == 1 ? hits.single : null;
+  }
+
+  bool isDefaultClone(CloneApp c) => defaultClone(c.packageName)?.uid == c.uid;
+
+  /// 默认分身现在的自定义名。改名后这里跟着变，不另存一份会过期的名字。
+  String? defaultLabel(String pkg) => defaultClone(pkg)?.customName;
+
+  List<DefaultCloneChoice> exportLaunchDefaults() => [
+        for (final e in _defaults.entries)
+          if (isLaunchKey(e.value)) DefaultCloneChoice(packageName: e.key, launchKey: e.value),
+      ];
+
+  void setDefaultClone(CloneApp c, {String? launchKey}) {
+    if (!_clones.contains(c)) return;
+    final existing = c.launchKey;
+    final key = existing != null && isLaunchKey(existing)
+        ? existing
+        : (launchKey != null && isLaunchKey(launchKey) ? launchKey : newLaunchKey());
+    c.launchKey = key;
+    _defaults[c.packageName] = key;
+    _ask.remove(c.packageName);
+    _changed();
+  }
+
+  /// 用户明确取消默认。不留下「必须再问一次」的标记，唯一的那一份仍可直接打开。
+  void clearDefault(String pkg) {
+    _defaults.remove(pkg);
+    _ask.remove(pkg);
+    _persistDefaultPrefs();
+    notifyListeners();
+  }
+
+  /// 用户在选择器里点了一份，但没有要求记住。之后不再因为旧默认失效而拦住唯一的分身。
+  void acknowledgePackageChoice(String pkg) {
+    if (!_ask.remove(pkg)) return;
+    _persistDefaultPrefs();
+    notifyListeners();
+  }
+
+  PackageLaunchDecision resolvePackageLaunch(String pkg) {
+    final hadAsk = _ask.contains(pkg);
+    final decision = resolveGenericLaunch(
+      packageName: pkg,
+      clones: _launchRefs(),
+      choice: _choiceFor(pkg),
+      askPackages: _ask,
+    );
+    _ask
+      ..clear()
+      ..addAll(decision.askPackages);
+    if (decision.pruned) _defaults.remove(pkg);
+    _persistDefaultPrefs();
+    notifyListeners();
+    final stale = decision.pruned || hadAsk;
+    if (decision.kind == 'launch') {
+      final c = decision.uid == null ? null : byId(decision.uid!);
+      if (c != null) return PackageLaunchDecision('launch', clone: c);
+    }
+    if (decision.kind == 'absent' || instancesOf(pkg).isEmpty) {
+      return PackageLaunchDecision('absent', stale: stale);
+    }
+    return PackageLaunchDecision('chooser', stale: stale);
+  }
+
+  /// 分身数据恢复给出了 source → target。不按数字 userId 把默认搬到新分身。
+  void noteCloneDataRestore({
+    required String packageName,
+    required int sourceUserId,
+    required int targetUserId,
+    required String action,
+  }) {
+    final effect = effectOfDataRestore(
+      currentKey: _defaults[packageName],
+      packageName: packageName,
+      sourceUserId: sourceUserId,
+      targetUserId: targetUserId,
+      action: action,
+      clones: _launchRefs(),
+    );
+    var stripped = false;
+    if (effect.stripTargetKey && targetUserId != sourceUserId) {
+      final created = byInstance(packageName, targetUserId);
+      final source = byInstance(packageName, sourceUserId);
+      if (created != null && !identical(created, source)) {
+        created.launchKey = null;
+        stripped = true;
+      }
+    }
+    if (effect.remainingKey == null) {
+      if (_defaults.containsKey(packageName)) _defaults.remove(packageName);
+      if (effect.ask) _ask.add(packageName);
+    } else {
+      _defaults[packageName] = effect.remainingKey!;
+      _ask.remove(packageName);
+    }
+    if (stripped) {
+      _changed();
+    } else {
+      _persistDefaultPrefs();
+      notifyListeners();
+    }
+  }
+
+  /// 合并时只补上对得上的默认；覆盖时先清空，再只恢复 launchKey 仍在本机的那些。
+  void importLaunchDefaults(List<DefaultCloneChoice> incoming, {required bool replace}) {
+    if (replace) {
+      _defaults.clear();
+      _ask.clear();
+    }
+    for (final choice in acceptBackupDefaults(incoming: incoming, localClones: _launchRefs())) {
+      _defaults[choice.packageName] = choice.launchKey;
+      _ask.remove(choice.packageName);
+    }
+    _persistDefaultPrefs();
+    notifyListeners();
   }
 
   void _changed() {
@@ -412,6 +631,8 @@ class CloneStore extends ChangeNotifier {
           version: c.version,
           category: c.category,
           frozen: c.frozen,
+          // launchKey 是这一份分身的身份，不是可被覆盖重置的开关。
+          launchKey: c.launchKey,
         );
       }
       setMocking(null);
@@ -423,6 +644,7 @@ class CloneStore extends ChangeNotifier {
         missing++;
         continue;
       }
+      // 不把备份里的 launchKey 写到本机分身上。只按 userId 对上的可能是后来新建的另一份。
       c
         ..customLabel = b.customLabel
         ..fingerprintLock = b.fingerprintLock
@@ -439,7 +661,13 @@ class CloneStore extends ChangeNotifier {
     return (applied: applied, missing: missing);
   }
 
-  BackupData backupPart() => BackupData(clones: clones, favorites: const [], routes: const [], settings: const {});
+  BackupData backupPart() => BackupData(
+        clones: clones,
+        favorites: const [],
+        routes: const [],
+        settings: const {},
+        defaults: exportLaunchDefaults(),
+      );
 
   /// 桌面小组件数据：主屏前 4 个（私密分身不会出现在桌面）。
   List<Map<String, Object?>> widgetItems() => [

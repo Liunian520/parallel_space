@@ -12,6 +12,7 @@ import '../state/private_space_store.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
+import '../widgets/default_clone_section.dart';
 import '../widgets/device_identity_section.dart';
 import '../widgets/location_section.dart';
 import '../widgets/section_tile.dart';
@@ -124,6 +125,7 @@ class CloneDetailScreen extends StatelessWidget {
                   ]),
                 ]),
               ),
+              DefaultCloneSection(clone: c),
               SectionCard(title: '隐私', children: [
                 GlassTile(
                   icon: Icons.fingerprint_rounded,

@@ -18,6 +18,7 @@ String buildBackupJson(BuildContext context) {
     favorites: loc.favorites,
     routes: loc.userRoutes,
     settings: st.toBackup(),
+    defaults: store.exportLaunchDefaults(),
   ));
 }
 
@@ -62,7 +63,8 @@ Future<void> applyBackupText(BuildContext context, String text) async {
         '分身 ${data.clones.length} 个 · 收藏 ${data.favorites.length} 个 · 路线 ${data.routes.length} 条'
         '${data.skipped > 0 ? '\n有 ${data.skipped} 项无法识别，将被跳过' : ''}'
         '\n\n合并：保留现有数据，只添加新的项目。\n覆盖：重置分身设置、清空收藏和路线，并恢复备份中的设置（不会删除工作资料中的应用）。'
-        '\n\nPIN 不会随备份迁移，私密空间需在新设备重新设置 PIN。分身设置只会应用到本机工作资料中已有的同一应用。',
+        '\n\nPIN 不会随备份迁移，私密空间需在新设备重新设置 PIN。分身设置只会应用到本机工作资料中已有的同一应用。'
+        '\n默认分身只在本机还能对上同一份时恢复，不会按编号套到后来新建的分身上。',
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
@@ -85,6 +87,7 @@ Future<void> applyBackupText(BuildContext context, String text) async {
   }
   if (!context.mounted) return;
   final r = store.importClones(data.clones, replace: replace);
+  store.importLaunchDefaults(data.defaults, replace: replace);
   final n = loc.importData(data.favorites, data.routes, replace: replace);
   if (replace && data.settings.isNotEmpty) context.read<SettingsStore>().applyBackup(data.settings);
   showGlassSnack(context, '导入完成：恢复 ${r.applied} 个分身设置、$n 个收藏/路线${r.missing > 0 ? '；${r.missing} 个应用不在本机工作资料中，请先添加分身后再导入' : ''}');

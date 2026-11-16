@@ -8,6 +8,7 @@ import '../models/app_info.dart';
 import '../models/clone_app.dart';
 import '../state/clone_store.dart';
 import '../state/private_space_store.dart';
+import '../widgets/default_clone_sheet.dart';
 import '../widgets/pin_pad.dart';
 import '../widgets/text_input_dialog.dart';
 import 'native_bridge.dart';
@@ -170,7 +171,9 @@ String launchErrorText(String r, String name) => switch (r) {
       _ => '启动失败，请稍后重试',
     };
 
-/// 打开分身：优先虚拟引擎；引擎不可用时回退工作资料启动。
+/// 打开点名的这一份。不看默认分身，快捷方式、通知和卡片上的打开都走这里。
+///
+/// 优先虚拟引擎；引擎不可用时回退工作资料启动。
 Future<void> openClone(NavigatorState nav, CloneApp c) async {
   final context = nav.context;
   if (c.isPrivate && !await _unlockPrivate(context)) return;
@@ -214,6 +217,37 @@ Future<void> openClone(NavigatorState nav, CloneApp c) async {
   } else {
     showGlassSnack(context, launchErrorText(r, c.customName));
   }
+}
+
+/// 没有点名分身时打开这个包：有明确默认就用它，否则询问。不会改去最近打开的那一份。
+Future<void> openPackage(NavigatorState nav, String pkg) async {
+  final context = nav.context;
+  if (!context.mounted) return;
+  final store = context.read<CloneStore>();
+  final decision = store.resolvePackageLaunch(pkg);
+  if (!context.mounted) return;
+  if (decision.kind == 'launch' && decision.clone != null) {
+    await openClone(nav, decision.clone!);
+    return;
+  }
+  if (decision.kind == 'absent') {
+    showGlassSnack(context, '没有可打开的分身');
+    return;
+  }
+  final clones = store.instancesOf(pkg);
+  if (clones.isEmpty || !context.mounted) {
+    showGlassSnack(context, '没有可打开的分身');
+    return;
+  }
+  final picked = await showCloneChooser(
+    context,
+    clones,
+    message: decision.stale ? '原先的默认分身已经不在，不会自动打开另一份。' : null,
+  );
+  if (picked == null || !nav.context.mounted) return;
+  store.acknowledgePackageChoice(pkg);
+  if (picked.remember) store.setDefaultClone(picked.clone);
+  await openClone(nav, picked.clone);
 }
 
 /// installExistingPackage 之后系统需要片刻才能在 LauncherApps 中看到应用。

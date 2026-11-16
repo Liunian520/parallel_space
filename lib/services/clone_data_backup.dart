@@ -269,6 +269,14 @@ Future<void> importCloneData(BuildContext context) async {
         customLabel: label.isEmpty ? null : label,
         deviceIdIsolated: e['deviceIdIsolated'] is bool ? e['deviceIdIsolated'] as bool : null,
       );
+      final sourceUserId = (e['sourceUserId'] as num?)?.toInt() ?? userId;
+      final action = e['action'] is String ? e['action'] as String : '';
+      store.noteCloneDataRestore(
+        packageName: pkg,
+        sourceUserId: sourceUserId,
+        targetUserId: userId,
+        action: action,
+      );
     }
   }
   final okN = (restored['ok'] as num?)?.toInt() ?? 0;

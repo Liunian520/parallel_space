@@ -21,6 +21,7 @@ class CloneApp {
     this.autoFreezeMin = 0,
     this.userAdded = false,
     this.deviceIdIsolated = false,
+    this.launchKey,
     int? lastActiveMs,
   }) : lastActiveMs = lastActiveMs ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -44,6 +45,9 @@ class CloneApp {
     if (i < 0) return 0;
     return (int.tryParse(id.substring(i + 1)) ?? 0).clamp(0, 999);
   }
+
+  /// 默认分身的身份。32 位小写十六进制，不使用会复用的 userId。
+  static bool isLaunchKey(String value) => RegExp(r'^[0-9a-f]{32}$').hasMatch(value);
 
   /// 从实例 id 解析包名。
   static String pkgOf(String id) {
@@ -88,6 +92,9 @@ class CloneApp {
   /// 是否对该分身使用单独保存的 Android ID。真正的标识在原生文件里，这里只记开关。
   bool deviceIdIsolated;
 
+  /// 用户把这一份设为默认时写入的标记。空表示没设过。数字 userId 会复用，不能当默认身份。
+  String? launchKey;
+
   /// 默认名：第一个分身为应用名，其余为「应用名 分身N」（N = userId + 1）。
   String get defaultName => userId <= 0 ? appName : '$appName 分身${userId + 1}';
 
@@ -116,6 +123,7 @@ class CloneApp {
         'last': lastActiveMs,
         'ua': userAdded,
         if (deviceIdIsolated) 'iso': true,
+        if (launchKey != null && isLaunchKey(launchKey!)) 'lk': launchKey,
       };
 
   /// 宽容解析。没有包名的旧版“模拟分身”返回 null（迁移时丢弃）。
@@ -133,6 +141,7 @@ class CloneApp {
     final validLoc = lat != null && lng != null && lat.abs() <= 90 && lng.abs() <= 180;
     final name = v<String>('name')?.trim();
     final appName = v<String>('appName')?.trim();
+    final lk = v<String>('lk');
     return CloneApp(
       uid: (uid == null || uid.isEmpty) ? uidFor(pkg, userId) : uid,
       packageName: pkg,
@@ -155,6 +164,7 @@ class CloneApp {
       // 缺省 ua：旧数据视为未标记；加载后由 CloneStore 再按预装名单清洗
       userAdded: v<bool>('ua') ?? false,
       deviceIdIsolated: v<bool>('iso') ?? false,
+      launchKey: lk != null && isLaunchKey(lk) ? lk : null,
     );
   }
 }

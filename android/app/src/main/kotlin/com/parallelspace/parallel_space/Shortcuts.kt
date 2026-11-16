@@ -145,6 +145,7 @@ class ShortcutTrampolineActivity : Activity() {
         finish()
     }
 
+    /** 只用快捷方式上的 userId，不改去该应用的默认分身。 */
     private fun launchClone(pkg: String, userId: Int): Boolean = if (VirtualEngine.available) {
         VirtualEngine.launch(pkg, userId)["r"] == "ok"
     } else {

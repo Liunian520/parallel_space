@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.35-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.36-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -16,6 +16,7 @@ Alter Ego 用进程内虚拟引擎（NewBlackbox / Bcore）创建和启动分身
 | | 功能 | 说明 |
 | --- | --- | --- |
 | 📦 | 应用分身 | 把已安装的应用装进虚拟空间，打开、删除、排序 |
+| ⭐ | 默认分身 | 每个应用可以指定一份默认分身。没点明是哪一份时打开它；点某一个、桌面快捷方式和通知仍打开你选的那一份 |
 | ⚙️ | 虚拟引擎 | NewBlackbox / Bcore，进程内运行，不要求 Root |
 | 🎨 | 真实图标 | 分身卡片使用个人空间里的原图标 |
 | 📌 | 桌面快捷方式 | 固定到桌面后直接启动虚拟分身 |
@@ -67,7 +68,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.35+12335**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.36+12336**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -75,7 +76,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.35`（versionCode `12335`），下一次是 `1.3.36`（`12336`）。
+只把修订号加 1：当前 `1.3.36`（versionCode `12336`），下一次是 `1.3.37`（`12337`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
@@ -119,6 +120,10 @@ android/app/proguard-rules.pro  发布包保留虚拟引擎反射类
 **HyperOS 上一直显示引擎未就绪**
 
 1.3.1 起，`BlackBoxCore.getProcessName` 改为调用 `ProcessNameCompat.get`：先用 `Application.getProcessName()`，再读 `/proc/self/cmdline`，最后才查 ActivityManager。发布包里如果缺少 `blackreflection` 或 `black.**`，初始化会变成 `NoClassDefFoundError`。不要删 ProGuard keep。
+
+**多个分身时想固定打开某一个**
+
+在分身详情里打开「设为默认分身」。同一个应用有多份时，卡片菜单里的「按默认打开」会打开这一份，名字跟着备注走。直接点某个分身、桌面快捷方式、小组件和通知仍然打开你点的那一个。删掉默认的那一份之后，不会自动改开剩下的；会再让你选。配置备份里的默认分身只在本机还能对上同一份时恢复，不会按编号套到后来新建的分身上。
 
 **添加桌面快捷方式失败**
 

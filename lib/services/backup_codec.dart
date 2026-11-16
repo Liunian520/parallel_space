@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models/clone_app.dart';
 import '../models/location_models.dart';
+import 'default_clone.dart';
 
 class BackupFormatException implements Exception {
   BackupFormatException(this.message);
@@ -17,6 +18,7 @@ class BackupData {
     required this.favorites,
     required this.routes,
     required this.settings,
+    this.defaults = const [],
     this.skipped = 0,
     this.exportedAt,
   });
@@ -24,6 +26,9 @@ class BackupData {
   final List<FavoriteLocation> favorites;
   final List<MockRoute> routes;
   final Map<String, dynamic> settings;
+
+  /// 可选。旧备份没有这项。只含包名和 launchKey，不含 userId。
+  final List<DefaultCloneChoice> defaults;
   final int skipped;
   final DateTime? exportedAt;
 }
@@ -49,6 +54,7 @@ class BackupCodec {
       'favorites': [for (final f in d.favorites) f.toJson()],
       'routes': [for (final r in d.routes) r.toJson()],
       'settings': settings,
+      if (d.defaults.isNotEmpty) 'defaults': [for (final c in d.defaults) c.toJson()],
     });
   }
 
@@ -98,6 +104,7 @@ class BackupCodec {
     });
     final favs = list<FavoriteLocation>('favorites', FavoriteLocation.fromJson);
     final routes = list<MockRoute>('routes', MockRoute.fromJson);
+    final defaults = list<DefaultCloneChoice>('defaults', DefaultCloneChoice.tryParse);
     final rawSettings = root['settings'];
     final settings = <String, dynamic>{};
     if (rawSettings is Map) {
@@ -110,6 +117,7 @@ class BackupCodec {
       favorites: favs,
       routes: routes,
       settings: settings,
+      defaults: defaults,
       skipped: skipped,
       exportedAt: DateTime.tryParse(root['exportedAt'] is String ? root['exportedAt'] as String : ''),
     );
