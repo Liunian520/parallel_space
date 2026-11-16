@@ -229,6 +229,7 @@ object CloneDataBackup {
         val results = ArrayList<Map<String, Any?>>()
         var ok = 0
         var fail = 0
+        cleanupBackupCache(ctx, listOf(file))
         try {
             emit("extracting", 0, plan.size, null, "正在解开备份…", 0L, file.length())
             unzipSafe(file, work)
@@ -277,6 +278,9 @@ object CloneDataBackup {
             ok == 0 -> "error"
             else -> "partial"
         }
+        if (r == "ok" || r == "partial") {
+            deleteIfInBackupCache(ctx, file)
+        }
         return mapOf("r" to r, "ok" to ok, "fail" to fail, "items" to results)
     }
 
@@ -324,34 +328,25 @@ object CloneDataBackup {
         sleepQuiet(200)
 
         val dataDir = BEnvironment.getDataDir(pkg, target)
-        dataDir.mkdirs()
-        wipePreserving(dataDir, setOf("lib"))
+        prepareDestTree(dataDir, "data")
         val srcData = File(cloneDir, "data")
         if (srcData.isDirectory) copyTree(srcData, dataDir)
 
         val deDir = BEnvironment.getDeDataDir(pkg, target)
+        prepareDestTree(deDir, "data_de")
         val srcDe = File(cloneDir, "data_de")
-        if (srcDe.isDirectory) {
-            deDir.mkdirs()
-            wipePreserving(deDir, emptySet())
-            copyTree(srcDe, deDir)
-            fixPerms(deDir)
-        }
+        if (srcDe.isDirectory) copyTree(srcDe, deDir)
+        if (deDir.exists()) fixPerms(deDir)
 
         val ext = runCatching { BEnvironment.getExternalDataDir(pkg, target) }.getOrNull()
+        prepareDestTree(ext, "external_data")
         val srcExt = File(cloneDir, "external_data")
-        if (ext != null && srcExt.isDirectory) {
-            ext.mkdirs()
-            wipePreserving(ext, emptySet())
-            copyTree(srcExt, ext)
-        }
-        val obb = BEnvironment.getExternalObbDir(pkg, target)
+        if (ext != null && srcExt.isDirectory) copyTree(srcExt, ext)
+
+        val obb = runCatching { BEnvironment.getExternalObbDir(pkg, target) }.getOrNull()
+        prepareDestTree(obb, "external_obb")
         val srcObb = File(cloneDir, "external_obb")
-        if (srcObb.isDirectory) {
-            obb.mkdirs()
-            wipePreserving(obb, emptySet())
-            copyTree(srcObb, obb)
-        }
+        if (obb != null && srcObb.isDirectory) copyTree(srcObb, obb)
 
         fixPerms(dataDir)
 
@@ -530,13 +525,20 @@ object CloneDataBackup {
         }
     }
 
-    private fun wipePreserving(dir: File, keep: Set<String>) {
-        if (!dir.isDirectory) return
-        dir.listFiles()?.forEach { child ->
-            if (keep.contains(child.name)) return@forEach
-            deleteRecursivelySafe(child)
-        }
+    private fun prepareDestTree(dest: File?, treeName: String) {
+        if (dest == null) return
+        val preserve = CloneDataPolicy.destWipePreserve(treeName) ?: return
+        CloneDataPolicy.ensureWiped(dest, preserve)
     }
+
+    fun backupCacheDir(ctx: Context): File = File(ctx.cacheDir, "backup")
+
+    fun cleanupBackupCache(ctx: Context, keep: Collection<File> = emptyList()) {
+        CloneDataPolicy.cleanupBackupCacheDir(backupCacheDir(ctx), keep)
+    }
+
+    fun deleteIfInBackupCache(ctx: Context, file: File): Boolean =
+        CloneDataPolicy.deleteIfInBackupCache(backupCacheDir(ctx), file)
 
     private fun deleteRecursivelySafe(f: File) {
         if (isSymlink(f)) {

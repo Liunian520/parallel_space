@@ -243,7 +243,9 @@ class MainActivity : FlutterFragmentActivity() {
                         val appVer = call.argument<String>("appVersion") ?: ""
                         background(result) {
                             val dir = File(cacheDir, "backup").apply { mkdirs() }
-                            CloneDataBackup.pack(this, items, File(dir, name), appVer)
+                            val out = File(dir, name)
+                            CloneDataBackup.cleanupBackupCache(this, listOf(out))
+                            CloneDataBackup.pack(this, items, out, appVer)
                         }
                     }
                     "saveBinaryFile" -> saveBinaryFile(result, call.argument<String>("path")!!, call.argument<String>("name") ?: "alter_ego_data.aebak")
@@ -730,6 +732,7 @@ class MainActivity : FlutterFragmentActivity() {
                                     contentResolver.openOutputStream(uri, "w")?.use { out ->
                                         src.inputStream().use { it.copyTo(out) }
                                     } ?: throw IllegalStateException("无法写入")
+                                    CloneDataBackup.deleteIfInBackupCache(this@MainActivity, src)
                                     "ok"
                                 }
                             } catch (e: Exception) {
@@ -748,6 +751,7 @@ class MainActivity : FlutterFragmentActivity() {
                             val path = try {
                                 val dir = File(cacheDir, "backup").apply { mkdirs() }
                                 val dest = File(dir, "import_${System.currentTimeMillis()}.aebak")
+                                CloneDataBackup.cleanupBackupCache(this@MainActivity, listOf(dest))
                                 contentResolver.openInputStream(uri)?.use { input ->
                                     dest.outputStream().use { input.copyTo(it) }
                                 } ?: throw IllegalStateException("无法读取")

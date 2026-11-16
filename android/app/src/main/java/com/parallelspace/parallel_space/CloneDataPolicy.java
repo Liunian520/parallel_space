@@ -1,7 +1,9 @@
 package com.parallelspace.parallel_space;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -214,5 +216,154 @@ public final class CloneDataPolicy {
             if (usedKeys == null || !usedKeys.contains(CloneRef.key(pkg, i))) return i;
         }
         return MAX_USERS;
+    }
+
+    /**
+     * 恢复指定数据树时，目标目录是否必须先清空。
+     * 为真时，即使备份里没有该目录，目标也要清空（CE 的 {@code data} 仅保留顶层 {@code lib}），
+     * 避免旧分身或全新安装留下的文件和恢复出的登录数据混在一起。
+     */
+    public static boolean shouldWipeDest(String treeName) {
+        return destWipePreserve(treeName) != null;
+    }
+
+    /**
+     * 清空目标时要保留的顶层名字。{@code data} 保留 {@code lib}；
+     * {@code data_de} / {@code external_data} / {@code external_obb} 全部删除。
+     * 未知树返回 {@code null}，表示不要动这个目录。
+     */
+    public static Set<String> destWipePreserve(String treeName) {
+        if ("data".equals(treeName)) {
+            Set<String> keep = new LinkedHashSet<String>();
+            keep.add("lib");
+            return Collections.unmodifiableSet(keep);
+        }
+        if ("data_de".equals(treeName)
+                || "external_data".equals(treeName)
+                || "external_obb".equals(treeName)) {
+            return Collections.emptySet();
+        }
+        return null;
+    }
+
+    /**
+     * 确保目标目录存在，并删掉除 {@code preserve} 以外的直接子项。
+     * 目录原先不存在时创建为空目录。不会跟随符号链接。
+     */
+    public static void ensureWiped(File dir, Collection<String> preserve) {
+        if (dir == null) return;
+        if (!dir.exists()) {
+            dir.mkdirs();
+            return;
+        }
+        if (!dir.isDirectory()) return;
+        Set<String> keep = new LinkedHashSet<String>();
+        if (preserve != null) keep.addAll(preserve);
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (keep.contains(child.getName())) continue;
+            deleteRecursively(child);
+        }
+    }
+
+    public static final long BACKUP_CACHE_SHARE_GRACE_MS = 30L * 60L * 1000L;
+
+    /**
+     * 判断 cacheDir/backup 里的某个文件能否删掉。
+     * {@code .tmp} 和 {@code import_*.aebak} 可立刻删（调用方负责把正在写入或正在恢复的文件加入 keep）；
+     * 其它 {@code .aebak} 是打包/分享产物，要过了分享宽限期才删，以免接收方还在读 FileProvider URI。
+     */
+    public static boolean shouldDeleteBackupCacheFile(String name, long lastModifiedMs, long nowMs) {
+        return shouldDeleteBackupCacheFile(name, lastModifiedMs, nowMs, BACKUP_CACHE_SHARE_GRACE_MS);
+    }
+
+    public static boolean shouldDeleteBackupCacheFile(String name, long lastModifiedMs, long nowMs, long graceMs) {
+        if (name == null || name.isEmpty()) return false;
+        if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) return false;
+        if (name.endsWith(".tmp")) return true;
+        if (!name.endsWith(".aebak")) return false;
+        if (name.startsWith("import_")) return true;
+        if (graceMs < 0) graceMs = 0;
+        return nowMs - lastModifiedMs >= graceMs;
+    }
+
+    /** 清理备份缓存目录。返回实际删除的文件数。{@code keep} 中的文件不会删。 */
+    public static int cleanupBackupCacheDir(File dir, Collection<File> keep) {
+        return cleanupBackupCacheDir(dir, keep, System.currentTimeMillis(), BACKUP_CACHE_SHARE_GRACE_MS);
+    }
+
+    public static int cleanupBackupCacheDir(File dir, Collection<File> keep, long nowMs, long graceMs) {
+        if (dir == null || !dir.isDirectory()) return 0;
+        Set<String> keepPaths = new LinkedHashSet<String>();
+        if (keep != null) {
+            for (File k : keep) {
+                if (k == null) continue;
+                try {
+                    keepPaths.add(k.getCanonicalFile().getPath());
+                } catch (Exception e) {
+                    keepPaths.add(k.getAbsolutePath());
+                }
+            }
+        }
+        File[] files = dir.listFiles();
+        if (files == null) return 0;
+        int deleted = 0;
+        for (File f : files) {
+            if (f == null || !f.isFile()) continue;
+            String path;
+            try {
+                path = f.getCanonicalFile().getPath();
+            } catch (Exception e) {
+                path = f.getAbsolutePath();
+            }
+            if (keepPaths.contains(path)) continue;
+            if (!shouldDeleteBackupCacheFile(f.getName(), f.lastModified(), nowMs, graceMs)) continue;
+            if (f.delete()) deleted++;
+        }
+        return deleted;
+    }
+
+    /**
+     * 仅当 file 位于 backupCacheDir 内时删除。用于恢复成功后删 import，或保存到文件成功后删打包缓存。
+     */
+    public static boolean deleteIfInBackupCache(File backupCacheDir, File file) {
+        if (backupCacheDir == null || file == null) return false;
+        try {
+            File root = backupCacheDir.getCanonicalFile();
+            File target = file.getCanonicalFile();
+            File parent = target.getParentFile();
+            if (parent == null || !parent.getPath().equals(root.getPath())) return false;
+            return target.isFile() && target.delete();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static void deleteRecursively(File f) {
+        if (f == null || !f.exists()) return;
+        if (isSymlink(f)) {
+            f.delete();
+            return;
+        }
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File c : children) deleteRecursively(c);
+            }
+        }
+        f.delete();
+    }
+
+    static boolean isSymlink(File f) {
+        try {
+            return java.nio.file.Files.isSymbolicLink(f.toPath());
+        } catch (Throwable t) {
+            try {
+                return !f.getAbsoluteFile().getCanonicalPath().equals(f.getAbsoluteFile().getPath());
+            } catch (Throwable t2) {
+                return false;
+            }
+        }
     }
 }

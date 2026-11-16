@@ -1,7 +1,9 @@
 package com.parallelspace.parallel_space;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +31,9 @@ public final class CloneDataPolicyTest {
         planLabelSuffixOnlyWhenNeeded();
         planEmptyPackageIsError();
         planUserLimit();
+        wipeDestEvenIfSourceMissing();
+        ensureWipedLeavesOnlyPreserved();
+        backupCacheCleanup();
         if (failed > 0) {
             System.err.println(failed + " assertion(s) failed");
             System.exit(1);
@@ -198,6 +203,147 @@ public final class CloneDataPolicyTest {
 
     private static Set<String> set(String... keys) {
         return new LinkedHashSet<String>(Arrays.asList(keys));
+    }
+
+    private static void wipeDestEvenIfSourceMissing() {
+        check(CloneDataPolicy.shouldWipeDest("data"), "CE data always wiped, even if backup has no tree");
+        check(CloneDataPolicy.shouldWipeDest("data_de"), "DE always wiped");
+        check(CloneDataPolicy.shouldWipeDest("external_data"), "external_data always wiped");
+        check(CloneDataPolicy.shouldWipeDest("external_obb"), "external_obb always wiped");
+        check(!CloneDataPolicy.shouldWipeDest("apk"), "apk is not a dest data tree");
+        check(!CloneDataPolicy.shouldWipeDest(null), "null tree");
+        check(!CloneDataPolicy.shouldWipeDest(""), "empty tree");
+        Set<String> dataKeep = CloneDataPolicy.destWipePreserve("data");
+        check(dataKeep != null && dataKeep.size() == 1 && dataKeep.contains("lib"), "CE preserves only lib");
+        check(CloneDataPolicy.destWipePreserve("data_de") != null
+                && CloneDataPolicy.destWipePreserve("data_de").isEmpty(), "DE preserves nothing");
+        check(CloneDataPolicy.destWipePreserve("external_data").isEmpty(), "ext preserves nothing");
+        check(CloneDataPolicy.destWipePreserve("external_obb").isEmpty(), "obb preserves nothing");
+        check(CloneDataPolicy.destWipePreserve("apk") == null, "unknown tree is not wiped");
+    }
+
+    private static void ensureWipedLeavesOnlyPreserved() {
+        File root = null;
+        try {
+            root = File.createTempFile("aebak_wipe", "");
+            if (!root.delete() || !root.mkdirs()) {
+                check(false, "could not create wipe temp dir");
+                return;
+            }
+            File data = new File(root, "data");
+            File lib = new File(data, "lib");
+            if (!lib.mkdirs()) throw new Exception("mkdir lib");
+            if (!new File(lib, "keep.so").createNewFile()) throw new Exception("keep.so");
+            File files = new File(data, "files");
+            if (!files.mkdirs()) throw new Exception("mkdir files");
+            if (!new File(files, "old.db").createNewFile()) throw new Exception("old.db");
+            if (!new File(data, "leftover.txt").createNewFile()) throw new Exception("leftover");
+
+            File de = new File(root, "data_de");
+            if (!de.mkdirs()) throw new Exception("mkdir de");
+            if (!new File(de, "old_device_id").createNewFile()) throw new Exception("de leftover");
+
+            CloneDataPolicy.ensureWiped(data, CloneDataPolicy.destWipePreserve("data"));
+            check(new File(lib, "keep.so").isFile(), "lib preserved");
+            check(!new File(files, "old.db").exists(), "CE leftover db gone");
+            check(!new File(data, "files").exists(), "CE leftover files dir gone");
+            check(!new File(data, "leftover.txt").exists(), "CE leftover file gone");
+
+            // backup has no data_de tree: dest must still be emptied
+            CloneDataPolicy.ensureWiped(de, CloneDataPolicy.destWipePreserve("data_de"));
+            check(de.isDirectory(), "DE dir remains");
+            String[] deKids = de.list();
+            check(deKids != null && deKids.length == 0, "DE empty when backup has no tree");
+
+            File missing = new File(root, "external_data");
+            check(!missing.exists(), "ext dest does not exist yet");
+            CloneDataPolicy.ensureWiped(missing, CloneDataPolicy.destWipePreserve("external_data"));
+            String[] extKids = missing.list();
+            check(missing.isDirectory() && extKids != null && extKids.length == 0,
+                    "missing dest is created empty");
+        } catch (Exception e) {
+            failed++;
+            System.err.println("FAIL: ensureWiped threw " + e);
+            e.printStackTrace(System.err);
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static void backupCacheCleanup() {
+        File dir = null;
+        File outside = null;
+        try {
+            dir = File.createTempFile("aebak_cache", "");
+            if (!dir.delete() || !dir.mkdirs()) {
+                check(false, "could not create cache temp dir");
+                return;
+            }
+            long now = 1_700_000_000_000L;
+            long grace = CloneDataPolicy.BACKUP_CACHE_SHARE_GRACE_MS;
+
+            check(CloneDataPolicy.shouldDeleteBackupCacheFile("import_1.aebak", now, now),
+                    "import deleted immediately");
+            check(CloneDataPolicy.shouldDeleteBackupCacheFile("x.aebak.tmp", now, now),
+                    "tmp deleted immediately");
+            check(!CloneDataPolicy.shouldDeleteBackupCacheFile("pack.aebak", now - 60_000L, now),
+                    "fresh pack kept for share grace");
+            check(CloneDataPolicy.shouldDeleteBackupCacheFile("pack.aebak", now - grace, now),
+                    "pack at grace boundary deleted");
+            check(!CloneDataPolicy.shouldDeleteBackupCacheFile("notes.txt", 0, now), "unrelated kept");
+            check(!CloneDataPolicy.shouldDeleteBackupCacheFile(null, 0, now), "null name");
+            check(!CloneDataPolicy.shouldDeleteBackupCacheFile("a/b.aebak", 0, now), "path rejected");
+
+            File packFresh = touch(dir, "alter_ego_data_x.aebak");
+            File packOld = touch(dir, "alter_ego_data_old.aebak");
+            File tmp = touch(dir, "alter_ego_data_x.aebak.tmp");
+            File imp = touch(dir, "import_123.aebak");
+            File impKeep = touch(dir, "import_999.aebak");
+            File other = touch(dir, "notes.txt");
+
+            // grace=0 会删掉所有打包 .aebak；把刚分享的 packFresh 放入 keep，模拟宽限期内不可删。
+            // now 必须不早于文件的真实 mtime，否则 age 为负，打包文件不会被删。
+            int n = CloneDataPolicy.cleanupBackupCacheDir(
+                    dir, Arrays.asList(impKeep, packFresh), System.currentTimeMillis() + 1000L, 0L);
+            check(n >= 3, "deleted tmp, leftover import, and unprotected pack");
+            check(!tmp.exists(), "tmp deleted");
+            check(!imp.exists(), "old import deleted");
+            check(impKeep.isFile(), "kept import remains");
+            check(packFresh.isFile(), "in-use / recently shared pack remains");
+            check(!packOld.exists(), "unprotected pack deleted");
+            check(other.isFile(), "unrelated remains");
+
+            File saved = touch(dir, "saved.aebak");
+            check(CloneDataPolicy.deleteIfInBackupCache(dir, saved), "delete pack in cache after save");
+            check(!saved.exists(), "saved pack gone");
+            outside = File.createTempFile("outside", ".aebak");
+            check(!CloneDataPolicy.deleteIfInBackupCache(dir, outside), "refuse to delete outside cache");
+            check(outside.isFile(), "outside file kept");
+        } catch (Exception e) {
+            failed++;
+            System.err.println("FAIL: backupCacheCleanup threw " + e);
+            e.printStackTrace(System.err);
+        } finally {
+            deleteTree(dir);
+            if (outside != null && outside.exists()) outside.delete();
+        }
+    }
+
+    private static File touch(File dir, String name) throws Exception {
+        File f = new File(dir, name);
+        if (!f.createNewFile() && !f.isFile()) throw new Exception("touch " + name);
+        return f;
+    }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            File[] kids = f.listFiles();
+            if (kids != null) {
+                for (File c : kids) deleteTree(c);
+            }
+        }
+        f.delete();
     }
 
     private static void check(boolean cond, String msg) {

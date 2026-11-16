@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.33 → 12333', () {
-    expect(kAppVersionName, '1.3.33');
-    expect(kAppVersionCode, 12333);
-    expect(encodeVersionCode(1, 3, 33), kAppVersionCode);
-    expect(versionCodeFromName('1.3.33'), 12333);
-    expect(encodeVersionCode(1, 3, 33), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 33), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 33), greaterThan(12332));
+  test('版本号只加最后一位：1.3.34 → 12334', () {
+    expect(kAppVersionName, '1.3.34');
+    expect(kAppVersionCode, 12334);
+    expect(encodeVersionCode(1, 3, 34), kAppVersionCode);
+    expect(versionCodeFromName('1.3.34'), 12334);
+    expect(encodeVersionCode(1, 3, 34), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 34), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 34), greaterThan(12333));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
