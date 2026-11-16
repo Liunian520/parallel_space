@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.34",
-  "versionCode": 14334,
-  "apkUrl": "https://link.liunianai.cn/f/disk/het4wllbpc3earjlbxlpynsuxs/parallel_space_v1.3.34_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/h447bp",
-  "sha256": "fdac7afa73f35bd83dcb2e5c18a001df2d81a2815e4e68f8d3ae0a4172e8cc12",
-  "size": 21558060,
-  "notes": "1.3.34：修复分身数据备份。覆盖或恢复会先清空目标数据目录（CE 仍保留 lib），避免旧文件和登录数据混在一起；保存或恢复成功后清理缓存备份，分享中的文件会等宽限期再删。",
-  "publishedAt": "2026-11-16T15:04:29+08:00"
+  "versionName": "1.3.35",
+  "versionCode": 14335,
+  "apkUrl": "https://link.liunianai.cn/f/disk/inx4baqxj3pjowobgxbbvmev9h/parallel_space_v1.3.35_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/n76nbt",
+  "sha256": "2fe1268042827a0d0648740648075340ec06010a8e906465c5445beccebdb284",
+  "size": 21640208,
+  "notes": "1.3.35：新增分身登录隔离与通知隔离。设备标识按分身分开、默认关闭，升级后已有分身仍用本机 Android ID，不会被悄悄换号；打开后使用单独保存的标识，关掉再打开还是同一个，只有「更换标识」才换新的。开关或更换后需重新打开该分身，且不能绕过应用服务器的账号、设备和风控限制。通知使用分身自己的 tag、id 和渠道，取消或全部取消只影响该分身，不影响其他分身和 Alter Ego 自己的通知；状态栏显示分身名。",
+  "publishedAt": "2026-11-16T18:57:37+08:00"
 }
