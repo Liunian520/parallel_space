@@ -45,7 +45,7 @@
 
 补丁在分身进程里改这些 hook：改写 tag、id、渠道、分组和展示名之后，再调用原来的系统服务对象（`hook` 的第一个参数就是真实服务），避免 `NotificationManager.notify` 再进代理造成递归。`invoke` 里拦截 `cancelAll*`，只取消本分身记录过的通知。`setNotificationsEnabledForPackage` 不转发给系统，避免一个分身关掉宿主的总开关。
 
-系统 tag 形如 `ae1 + 分隔符 + userId + 包名 + 应用 id + 原 tag`。系统 id 落在高位区间，并带上 tag。渠道 id 在原 id 后加 `@ae1-userId:包名`，读回时再剥掉，渠道名称、重要性、声音不改。投递记录写在 `files/clone_notification_index.json`，重启后 `cancel` / `cancelAll` 仍只命中自己的记录。
+系统 tag 形如 `ae1 + 分隔符 + userId + 包名 + 应用 id + 原 tag`。系统 id 落在高位区间，并带上 tag。渠道 id 在原 id 后加 `@ae1-userId:包名`，读回时再剥掉，渠道名称、重要性、声音不改。公开 SDK 的 `Notification` 没有 `setChannelId` / `setGroup`，改渠道和分组走 `Notification.Builder.recoverBuilder`，渠道对象用公开构造函数复制。投递记录写在 `files/clone_notification_index.json`，重启后 `cancel` / `cancelAll` 仍只命中自己的记录。
 
 PendingIntent、动作按钮不改写。所有通知仍由宿主 UID 发出，不伪造成另一个 Linux uid。
 

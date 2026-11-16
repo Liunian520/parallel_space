@@ -7,9 +7,10 @@ import android.app.NotificationChannelGroup;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.os.Build;
+import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
+import android.util.Log;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -27,6 +28,8 @@ import top.niunaijun.blackbox.fake.frameworks.BNotificationManager;
  * 通知仍然挂在宿主 UID 下。
  */
 public final class CloneNotificationCompat {
+    private static final String TAG = "CloneNotification";
+
     /** 补丁用来判断「这次没处理」。不要拿它当通知结果返回给系统。 */
     public static final Object FALLBACK = new Object();
 
@@ -163,17 +166,11 @@ public final class CloneNotificationCompat {
         if (guest == null || who == null || method == null) return FALLBACK;
         List<?> list = findList(args);
         if (list == null) return FALLBACK;
-        String[] ids = new String[list.size()];
+        Object[] saved = new Object[list.size()];
         try {
-            for (int i = 0; i < list.size(); i++) {
-                Object o = list.get(i);
-                if (!(o instanceof NotificationChannelGroup)) continue;
-                NotificationChannelGroup group = (NotificationChannelGroup) o;
-                ids[i] = group.getId();
-                if (!setTextField(group, "mId", CloneNotificationPolicy.groupId(group.getId(), guest.pkg, guest.userId))) {
-                    restoreGroups(list, ids);
-                    return FALLBACK;
-                }
+            if (!replaceGroups(list, saved, guest, true)) {
+                Log.w(TAG, "通知渠道组列表不能替换，已退回原路径");
+                return FALLBACK;
             }
             try {
                 method.invoke(who, args);
@@ -184,7 +181,7 @@ public final class CloneNotificationCompat {
         } catch (Throwable ignored) {
             return FALLBACK;
         } finally {
-            restoreGroups(list, ids);
+            restoreList(list, saved);
         }
     }
 
@@ -241,22 +238,11 @@ public final class CloneNotificationCompat {
         if (guest == null || who == null || method == null) return FALLBACK;
         List<?> list = findList(args);
         if (list == null) return FALLBACK;
-        String[] ids = new String[list.size()];
-        String[] groups = new String[list.size()];
+        Object[] saved = new Object[list.size()];
         try {
-            for (int i = 0; i < list.size(); i++) {
-                Object o = list.get(i);
-                if (!(o instanceof NotificationChannel)) continue;
-                NotificationChannel ch = (NotificationChannel) o;
-                ids[i] = ch.getId();
-                groups[i] = ch.getGroup();
-                if (!setTextField(ch, "mId", CloneNotificationPolicy.channelId(ch.getId(), guest.pkg, guest.userId))) {
-                    restoreChannels(list, ids, groups);
-                    return FALLBACK;
-                }
-                if (ch.getGroup() != null) {
-                    ch.setGroup(CloneNotificationPolicy.groupId(ch.getGroup(), guest.pkg, guest.userId));
-                }
+            if (!replaceChannels(list, saved, guest, true)) {
+                Log.w(TAG, "通知渠道列表不能替换，已退回原路径");
+                return FALLBACK;
             }
             try {
                 method.invoke(who, args);
@@ -267,7 +253,7 @@ public final class CloneNotificationCompat {
         } catch (Throwable ignored) {
             return FALLBACK;
         } finally {
-            restoreChannels(list, ids, groups);
+            restoreList(list, saved);
         }
     }
 
@@ -302,11 +288,12 @@ public final class CloneNotificationCompat {
                     : CloneNotificationPolicy.groupId(orig, guest.pkg, guest.userId);
             Object result = method.invoke(who, copy);
             if (result instanceof NotificationChannel) {
-                setTextField(result, "mId", orig);
                 NotificationChannel ch = (NotificationChannel) result;
-                if (ch.getGroup() != null) ch.setGroup(CloneNotificationPolicy.unwrapGroup(ch.getGroup()));
-            } else if (result instanceof NotificationChannelGroup) {
-                setTextField(result, "mId", orig);
+                String group = ch.getGroup() == null ? null : CloneNotificationPolicy.unwrapGroup(ch.getGroup());
+                return copyChannel(ch, orig, group);
+            }
+            if (result instanceof NotificationChannelGroup) {
+                return copyGroup((NotificationChannelGroup) result, orig, guest, false);
             }
             return result;
         } catch (Throwable ignored) {
@@ -320,7 +307,10 @@ public final class CloneNotificationCompat {
         try {
             Object raw = method.invoke(who, args);
             List<?> list = asList(raw);
-            if (list == null) return raw;
+            if (list == null) {
+                Log.w(TAG, "无法读取通知渠道列表");
+                return FALLBACK;
+            }
             String suffix = (channels ? CloneNotificationPolicy.CHANNEL_MARK : CloneNotificationPolicy.GROUP_MARK)
                     + guest.userId + ":" + guest.pkg;
             List<Object> kept = new ArrayList<Object>();
@@ -328,16 +318,18 @@ public final class CloneNotificationCompat {
                 String id = idOf(o);
                 if (id == null || !id.contains(suffix)) continue;
                 if (o instanceof NotificationChannel) {
-                    setTextField(o, "mId", CloneNotificationPolicy.unwrapChannel(id));
                     NotificationChannel ch = (NotificationChannel) o;
-                    if (ch.getGroup() != null) ch.setGroup(CloneNotificationPolicy.unwrapGroup(ch.getGroup()));
+                    String group = ch.getGroup() == null ? null : CloneNotificationPolicy.unwrapGroup(ch.getGroup());
+                    kept.add(copyChannel(ch, CloneNotificationPolicy.unwrapChannel(id), group));
                 } else if (o instanceof NotificationChannelGroup) {
-                    setTextField(o, "mId", CloneNotificationPolicy.unwrapGroup(id));
+                    kept.add(copyGroup((NotificationChannelGroup) o, CloneNotificationPolicy.unwrapGroup(id), guest, false));
                 }
-                kept.add(o);
             }
-            Object sliced = sliceLike(raw, kept);
-            return sliced == null ? FALLBACK : sliced;
+            if (!replaceAll(list, kept)) {
+                Log.w(TAG, "无法按分身过滤通知渠道列表");
+                return FALLBACK;
+            }
+            return raw;
         } catch (Throwable ignored) {
             return FALLBACK;
         }
@@ -399,61 +391,112 @@ public final class CloneNotificationCompat {
 
     private static Object filterActive(Object base, Method method, Object[] args, CloneIdentityCompat.Guest guest) {
         if (base == null) return FALLBACK;
-        Object raw = method.invoke(base, args);
+        try {
+            return filterActiveResult(method.invoke(base, args), guest);
+        } catch (Throwable t) {
+            Log.w(TAG, "读取正在显示的通知失败");
+            return FALLBACK;
+        }
+    }
+
+    private static Object filterActiveResult(Object raw, CloneIdentityCompat.Guest guest) {
         if (raw instanceof StatusBarNotification[]) {
             StatusBarNotification[] all = (StatusBarNotification[]) raw;
             List<StatusBarNotification> kept = new ArrayList<StatusBarNotification>();
             for (StatusBarNotification sbn : all) {
-                if (sbn != null && keepAndRestore(sbn, guest)) kept.add(sbn);
+                StatusBarNotification restored = restorePosted(sbn, guest);
+                if (restored != null) kept.add(restored);
             }
             return kept.toArray(new StatusBarNotification[0]);
         }
         List<?> list = asList(raw);
-        if (list == null) return FALLBACK;
-        List<Object> kept = new ArrayList<Object>();
-        for (Object o : list) {
-            if (o instanceof StatusBarNotification && keepAndRestore((StatusBarNotification) o, guest)) kept.add(o);
+        if (list == null) {
+            Log.w(TAG, "无法读取正在显示的通知");
+            return FALLBACK;
         }
-        Object sliced = sliceLike(raw, kept);
-        return sliced == null ? FALLBACK : sliced;
+        List<StatusBarNotification> kept = new ArrayList<StatusBarNotification>();
+        for (Object o : new ArrayList<Object>(list)) {
+            if (!(o instanceof StatusBarNotification)) continue;
+            StatusBarNotification restored = restorePosted((StatusBarNotification) o, guest);
+            if (restored != null) kept.add(restored);
+        }
+        if (!replaceAll(list, kept)) {
+            Log.w(TAG, "无法按分身过滤正在显示的通知");
+            return FALLBACK;
+        }
+        return raw;
     }
 
-    private static boolean keepAndRestore(StatusBarNotification sbn, CloneIdentityCompat.Guest guest) {
-        if (!CloneNotificationPolicy.belongsTo(sbn.getTag(), guest.pkg, guest.userId)) return false;
+    /**
+     * 用公开构造函数还原应用自己的 id/tag，并用 Builder 把渠道和分组 id 剥回原值。
+     * 这个构造函数在新 SDK 里标了 deprecated，但仍是唯一能指定 id 和 tag 的公开构造函数。
+     * 点按用的 PendingIntent 由 {@link Notification.Builder#recoverBuilder} 从原通知复制。
+     */
+    @SuppressWarnings("deprecation")
+    private static StatusBarNotification restorePosted(StatusBarNotification sbn, CloneIdentityCompat.Guest guest) {
+        if (sbn == null || !CloneNotificationPolicy.belongsTo(sbn.getTag(), guest.pkg, guest.userId)) return null;
         Integer appId = CloneNotificationPolicy.appIdOf(sbn.getTag());
         String appTag = CloneNotificationPolicy.appTagOf(sbn.getTag());
-        try {
-            if (appId != null) setIntField(sbn, "mId", appId);
-            setTextField(sbn, "mTag", appTag == null ? "" : appTag);
-            Notification n = sbn.getNotification();
-            if (n != null && Build.VERSION.SDK_INT >= 26 && n.getChannelId() != null) {
-                n.setChannelId(CloneNotificationPolicy.unwrapChannel(n.getChannelId()));
+        Notification rewritten = sbn.getNotification();
+        if (rewritten != null) {
+            String channel = null;
+            if (Build.VERSION.SDK_INT >= 26 && rewritten.getChannelId() != null) {
+                channel = CloneNotificationPolicy.unwrapChannel(rewritten.getChannelId());
             }
-            if (n != null && n.getGroup() != null) n.setGroup(CloneNotificationPolicy.unwrapGroup(n.getGroup()));
-        } catch (Throwable ignored) {
+            String group = rewritten.getGroup() == null ? null : CloneNotificationPolicy.unwrapGroup(rewritten.getGroup());
+            rewritten = rewriteNotification(rewritten, channel, group, null);
         }
-        return true;
+        String opPkg = Build.VERSION.SDK_INT >= 29 ? sbn.getOpPkg() : sbn.getPackageName();
+        return new StatusBarNotification(
+                sbn.getPackageName(),
+                opPkg,
+                appId == null ? sbn.getId() : appId,
+                appTag == null ? sbn.getTag() : appTag,
+                sbn.getUid(),
+                0,
+                0,
+                rewritten,
+                sbn.getUser(),
+                sbn.getPostTime());
     }
 
     private static Notification decorate(Notification source, CloneIdentityCompat.Guest guest) {
-        Notification n = source.clone();
+        String channel = null;
         if (Build.VERSION.SDK_INT >= 26) {
-            n.setChannelId(CloneNotificationPolicy.channelId(n.getChannelId(), guest.pkg, guest.userId));
+            channel = CloneNotificationPolicy.channelId(source.getChannelId(), guest.pkg, guest.userId);
         }
-        if (n.getGroup() != null) {
-            n.setGroup(CloneNotificationPolicy.groupId(n.getGroup(), guest.pkg, guest.userId));
+        String group = source.getGroup() == null
+                ? null
+                : CloneNotificationPolicy.groupId(source.getGroup(), guest.pkg, guest.userId);
+        return rewriteNotification(source, channel, group, displayName(guest));
+    }
+
+    /**
+     * 公开 SDK 没有 {@code Notification.setChannelId/setGroup}。用 Builder 复制原通知后再改渠道、分组和展示名。
+     * contentIntent、deleteIntent、fullScreenIntent 和 actions 由 recoverBuilder 保留。
+     */
+    private static Notification rewriteNotification(Notification source, String channelId, String groupId, String displayName) {
+        Context ctx = notificationContext();
+        if (ctx == null) {
+            throw new IllegalStateException("没有 Context，不能改写通知");
         }
-        String name = displayName(guest);
-        if (name != null && !name.isEmpty()) {
-            String shown = name.length() > 80 ? name.substring(0, 80) : name;
-            n.extras.putString("android.substName", shown);
-            CharSequence sub = n.extras.getCharSequence("android.subText");
-            if (sub == null || sub.length() == 0) n.extras.putCharSequence("android.subText", shown);
-            else if (!sub.toString().startsWith(shown)) {
-                n.extras.putCharSequence("android.subText", shown + " · " + sub);
-            }
+        Notification.Builder builder = Notification.Builder.recoverBuilder(ctx, source);
+        if (Build.VERSION.SDK_INT >= 26 && channelId != null) {
+            builder.setChannelId(channelId);
         }
-        return n;
+        if (groupId != null) {
+            builder.setGroup(groupId);
+        }
+        if (displayName != null && !displayName.isEmpty()) {
+            String shown = displayName.length() > 80 ? displayName.substring(0, 80) : displayName;
+            Bundle extras = new Bundle(source.extras == null ? new Bundle() : source.extras);
+            extras.putString("android.substName", shown);
+            CharSequence sub = extras.getCharSequence("android.subText");
+            if (sub == null || sub.length() == 0) extras.putCharSequence("android.subText", shown);
+            else if (!sub.toString().startsWith(shown)) extras.putCharSequence("android.subText", shown + " · " + sub);
+            builder.setExtras(extras);
+        }
+        return builder.build();
     }
 
     private static String displayName(CloneIdentityCompat.Guest guest) {
@@ -517,17 +560,6 @@ public final class CloneNotificationCompat {
         return null;
     }
 
-    private static Object sliceLike(Object original, List<?> items) {
-        if (original instanceof List) return items;
-        if (original == null) return null;
-        try {
-            Constructor<?> ctor = original.getClass().getConstructor(List.class);
-            return ctor.newInstance(items);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
     private static int indexOf(Object[] args, Class<?> type) {
         for (int i = 0; i < args.length; i++) {
             if (type.isInstance(args[i])) return i;
@@ -560,43 +592,144 @@ public final class CloneNotificationCompat {
         return null;
     }
 
-    private static void restoreChannels(List<?> list, String[] ids, String[] groups) {
-        if (list == null || ids == null) return;
-        for (int i = 0; i < list.size() && i < ids.length; i++) {
-            if (ids[i] == null) continue;
-            Object o = list.get(i);
-            if (o instanceof NotificationChannel) {
-                setTextField(o, "mId", ids[i]);
-                ((NotificationChannel) o).setGroup(groups[i]);
+    /** 用公开构造函数做出渠道副本。渠道 id 只能在构造时指定。 */
+    private static NotificationChannel copyChannel(NotificationChannel src, String newId, String groupId) {
+        NotificationChannel copy = new NotificationChannel(newId, src.getName(), src.getImportance());
+        copy.setDescription(src.getDescription());
+        copy.setGroup(groupId);
+        copy.setShowBadge(src.canShowBadge());
+        copy.setSound(src.getSound(), src.getAudioAttributes());
+        copy.enableLights(src.shouldShowLights());
+        copy.setLightColor(src.getLightColor());
+        copy.enableVibration(src.shouldVibrate());
+        copy.setVibrationPattern(src.getVibrationPattern());
+        copy.setBypassDnd(src.canBypassDnd());
+        copy.setLockscreenVisibility(src.getLockscreenVisibility());
+        if (Build.VERSION.SDK_INT >= 29) {
+            copy.setAllowBubbles(src.canBubble());
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            String parent = src.getParentChannelId();
+            String conversation = src.getConversationId();
+            if (parent != null || conversation != null) {
+                copy.setConversationId(parent, conversation);
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            copy.setBlockable(src.isBlockable());
+        }
+        return copy;
+    }
+
+    private static NotificationChannelGroup copyGroup(
+            NotificationChannelGroup src, String newId, CloneIdentityCompat.Guest guest, boolean namespaceChildren) {
+        NotificationChannelGroup copy = new NotificationChannelGroup(newId, src.getName());
+        if (Build.VERSION.SDK_INT >= 28) {
+            copy.setDescription(src.getDescription());
+        }
+        List<NotificationChannel> children = src.getChannels();
+        List<NotificationChannel> dest = copy.getChannels();
+        if (children != null && dest != null) {
+            for (NotificationChannel child : children) {
+                String childId = namespaceChildren
+                        ? CloneNotificationPolicy.channelId(child.getId(), guest.pkg, guest.userId)
+                        : CloneNotificationPolicy.unwrapChannel(child.getId());
+                String childGroup = child.getGroup();
+                if (namespaceChildren) {
+                    childGroup = childGroup == null ? newId : CloneNotificationPolicy.groupId(childGroup, guest.pkg, guest.userId);
+                } else if (childGroup != null) {
+                    childGroup = CloneNotificationPolicy.unwrapGroup(childGroup);
+                }
+                try {
+                    dest.add(copyChannel(child, childId, childGroup));
+                } catch (UnsupportedOperationException e) {
+                    Log.w(TAG, "通知渠道组的子渠道列表不可改");
+                    break;
+                }
+            }
+        }
+        return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean replaceChannels(List<?> list, Object[] saved, CloneIdentityCompat.Guest guest, boolean namespace) {
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof NotificationChannel)) continue;
+            NotificationChannel ch = (NotificationChannel) item;
+            String group = ch.getGroup();
+            if (namespace) {
+                group = group == null ? null : CloneNotificationPolicy.groupId(group, guest.pkg, guest.userId);
+            } else if (group != null) {
+                group = CloneNotificationPolicy.unwrapGroup(group);
+            }
+            String id = namespace
+                    ? CloneNotificationPolicy.channelId(ch.getId(), guest.pkg, guest.userId)
+                    : CloneNotificationPolicy.unwrapChannel(ch.getId());
+            saved[i] = item;
+            try {
+                ((List<Object>) list).set(i, copyChannel(ch, id, group));
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean replaceGroups(List<?> list, Object[] saved, CloneIdentityCompat.Guest guest, boolean namespace) {
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof NotificationChannelGroup)) continue;
+            NotificationChannelGroup group = (NotificationChannelGroup) item;
+            String id = namespace
+                    ? CloneNotificationPolicy.groupId(group.getId(), guest.pkg, guest.userId)
+                    : CloneNotificationPolicy.unwrapGroup(group.getId());
+            saved[i] = item;
+            try {
+                ((List<Object>) list).set(i, copyGroup(group, id, guest, namespace));
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void restoreList(List<?> list, Object[] saved) {
+        if (list == null || saved == null) return;
+        for (int i = 0; i < saved.length && i < list.size(); i++) {
+            if (saved[i] == null) continue;
+            try {
+                ((List<Object>) list).set(i, saved[i]);
+            } catch (RuntimeException ignored) {
             }
         }
     }
 
-    private static void restoreGroups(List<?> list, String[] ids) {
-        if (list == null || ids == null) return;
-        for (int i = 0; i < list.size() && i < ids.length; i++) {
-            if (ids[i] == null) continue;
-            if (list.get(i) instanceof NotificationChannelGroup) setTextField(list.get(i), "mId", ids[i]);
-        }
-    }
-
-    private static boolean setTextField(Object target, String field, String value) {
+    @SuppressWarnings("unchecked")
+    private static boolean replaceAll(List<?> list, List<?> items) {
         try {
-            Field f = findField(target.getClass(), field);
-            if (f == null) return false;
-            f.setAccessible(true);
-            f.set(target, value);
+            ((List<Object>) list).clear();
+            ((List<Object>) list).addAll(items);
             return true;
-        } catch (Throwable ignored) {
+        } catch (RuntimeException e) {
             return false;
         }
     }
 
-    private static void setIntField(Object target, String field, int value) throws Exception {
-        Field f = findField(target.getClass(), field);
-        if (f == null) return;
-        f.setAccessible(true);
-        f.setInt(target, value);
+    private static Context notificationContext() {
+        try {
+            Context ctx = BlackBoxCore.getContext();
+            if (ctx != null) return ctx;
+        } catch (Throwable ignored) {
+        }
+        try {
+            Application app = BActivityThread.getApplication();
+            if (app != null) return app;
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     /** 隔离路径不能处理时，走原来的 BlackBox 通知服务，避免把 FALLBACK 交回给应用。 */
@@ -688,15 +821,4 @@ public final class CloneNotificationCompat {
         return found;
     }
 
-    private static Field findField(Class<?> type, String name) {
-        Class<?> c = type;
-        while (c != null) {
-            try {
-                return c.getDeclaredField(name);
-            } catch (NoSuchFieldException e) {
-                c = c.getSuperclass();
-            }
-        }
-        return null;
-    }
 }

@@ -11,6 +11,7 @@
 - **通知不再互相取消。** 每个分身使用自己的 tag、id 和渠道 id。更新同一条通知仍然覆盖自己的那条；取消和全部取消只动这个分身投过的，不影响其他分身，也不影响 Alter Ego 自己的通知。状态栏会带上分身自定义名（没有自定义名时用「应用名 分身N」）。点击通知仍走原来的 PendingIntent。没有做统一通知收件箱。通知仍由宿主 UID 发出。
 - `.aebak` 仍是版本 1，清单里多了可选的 `identity`。旧版应用可以恢复旧字段里的应用数据。没有这项的旧备份：覆盖后该分身改回本机真实标识，已经生成过的标识留着不删；新建则不写入。备份里开了隔离时，覆盖沿用原来的标识；本机还留着原分身、再恢复出一份时，新分身另给一个标识，避免两份相同。标识在数据恢复成功后才写；写入失败会保留原文件，并提示数据已经恢复。
 - 设计说明见 `docs/login-notification-isolation.md`。字节码补丁见 `android/app/libs/BCORE_PATCH.txt` 与 `android/tools/PatchBlackBoxIsolation.java`。
+- 改通知渠道和分组只用公开的 `Notification.Builder` 和 `NotificationChannel` 构造函数。`Notification` 上没有公开的 `setChannelId` / `setGroup`。
 
 ### 其他
 
