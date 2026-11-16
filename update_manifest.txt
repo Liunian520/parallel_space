@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.33",
-  "versionCode": 14333,
-  "apkUrl": "https://link.liunianai.cn/f/disk/x9qoboniemnnjr1suuoxuohu3w/parallel_space_v1.3.33_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/m7h4ny",
-  "sha256": "6480b22a87f264ca27713ca7d8b678fed4b02473c59182b117a955e3b60326be",
+  "versionName": "1.3.34",
+  "versionCode": 14334,
+  "apkUrl": "https://link.liunianai.cn/f/disk/het4wllbpc3earjlbxlpynsuxs/parallel_space_v1.3.34_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/h447bp",
+  "sha256": "fdac7afa73f35bd83dcb2e5c18a001df2d81a2815e4e68f8d3ae0a4172e8cc12",
   "size": 21558060,
-  "notes": "1.3.33：新增分身数据备份与恢复（含登录状态）。设置里可导出某个或全部分身，换机或重装后可覆盖或新建恢复。密码本和 PIN 不包含在内。",
-  "publishedAt": "2026-11-15T23:37:52+08:00"
+  "notes": "1.3.34：应用内更新改为网盘永久直链，清单走 GitHub 固定地址，绕过 Link 盾。",
+  "publishedAt": "2026-11-16T15:04:29+08:00"
 }
