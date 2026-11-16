@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.35",
-  "versionCode": 14335,
-  "apkUrl": "https://link.liunianai.cn/f/disk/inx4baqxj3pjowobgxbbvmev9h/parallel_space_v1.3.35_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/n76nbt",
-  "sha256": "2fe1268042827a0d0648740648075340ec06010a8e906465c5445beccebdb284",
-  "size": 21640208,
-  "notes": "1.3.35：新增分身登录隔离与通知隔离。设备标识按分身分开、默认关闭，升级后已有分身仍用本机 Android ID，不会被悄悄换号；打开后使用单独保存的标识，关掉再打开还是同一个，只有「更换标识」才换新的。开关或更换后需重新打开该分身，且不能绕过应用服务器的账号、设备和风控限制。通知使用分身自己的 tag、id 和渠道，取消或全部取消只影响该分身，不影响其他分身和 Alter Ego 自己的通知；状态栏显示分身名。",
-  "publishedAt": "2026-11-16T18:57:37+08:00"
+  "versionName": "1.3.36",
+  "versionCode": 14336,
+  "apkUrl": "https://link.liunianai.cn/f/disk/mwpzinylnxbnjstuwpgoc0slpa/parallel_space_v1.3.36_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/tbk4fq",
+  "sha256": "b6c6afe3f3c426bc4a6275f0c1b9f00c1004e543ab971236707c3358001a11e8",
+  "size": 21705768,
+  "notes": "1.3.36：新增每个应用可记住默认分身。升级后不会自动把某一份或最近打开的当成默认；在分身详情「默认启动」里打开「设为默认分身」。点某一张卡片、详情「打开」、桌面快捷方式、小组件和通知仍打开你点的那一份。记下的那一份被删除或不可用时会清掉这条偏好，不会自动打开剩下的。",
+  "publishedAt": "2026-11-16T20:43:05+08:00"
 }
