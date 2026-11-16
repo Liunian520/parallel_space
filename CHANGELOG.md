@@ -14,7 +14,7 @@
 
 ### 其他
 
-- 版本 `1.3.36+12336`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14336。这次没有编译或上传 APK。`flutter analyze` 无问题，`flutter test` 147 项通过。这台环境没有 Android SDK，没有跑 Gradle。
+- 版本 `1.3.36+12336`。打包机已对 `807707f` 打出 arm64 release，versionName 1.3.36，versionCode 14336，签名证书与 1.3.35 相同。APK SHA-256 `b6c6afe3f3c426bc4a6275f0c1b9f00c1004e543ab971236707c3358001a11e8`（21705768 字节）。安装包里没有网盘 API key / token。此时尚未上传。`flutter analyze` 干净，147 个 Flutter 测试通过；公开通知 SDK 检查在 Android 36 上通过；四个 Java `main` 套件通过。这些套件入口是 `main()` 不是 JUnit，不能当成 JUnit 已通过。真机上的默认分身启动行为尚未验证。
 
 ## [1.3.35] - 2026-11-16
 
