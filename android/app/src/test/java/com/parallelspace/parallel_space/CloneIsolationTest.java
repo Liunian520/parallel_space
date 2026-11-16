@@ -1,6 +1,8 @@
 package com.parallelspace.parallel_space;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -95,7 +97,7 @@ public final class CloneIsolationTest {
         check(!first.equals(other.androidId), "other user different");
         CloneIdentityPolicy.Record changed = CloneIdentityFile.regenerate(dir, "com.a", 0, new Random(11));
         check(changed.enabled && !first.equals(changed.androidId), "regen file");
-        String text = Files.readString(CloneIdentityFile.storeFile(dir).toPath());
+        String text = readText(CloneIdentityFile.storeFile(dir));
         Map<String, CloneIdentityPolicy.Record> parsed = CloneIdentityFile.parse(text);
         check(changed.androidId.equals(parsed.get("com.a#0").androidId), "roundtrip");
         check(other.androidId.equals(parsed.get("com.a#1").androidId), "user1 kept");
@@ -104,7 +106,7 @@ public final class CloneIsolationTest {
     private static void corruptFileIsNotOverwritten() throws Exception {
         File dir = Files.createTempDirectory("id-bad").toFile();
         File f = CloneIdentityFile.storeFile(dir);
-        Files.writeString(f.toPath(), "{not json");
+        writeText(f, "{not json");
         boolean threw = false;
         try {
             CloneIdentityFile.setEnabled(dir, "com.a", 0, true, new Random(1));
@@ -112,7 +114,7 @@ public final class CloneIsolationTest {
             threw = true;
         }
         check(threw, "corrupt refuses");
-        check("{not json".equals(Files.readString(f.toPath())), "corrupt kept");
+        check("{not json".equals(readText(f)), "corrupt kept");
     }
 
     private static void callRewriteRules() {
@@ -151,7 +153,7 @@ public final class CloneIsolationTest {
     private static void restoreAdditionalDoesNotCopy() throws Exception {
         File dir = Files.createTempDirectory("id-add").toFile();
         String original = "0123456789abcdef";
-        Files.writeString(CloneIdentityFile.storeFile(dir).toPath(),
+        writeText(CloneIdentityFile.storeFile(dir),
                 CloneIdentityFile.toJson(mapOf("com.a#0", new CloneIdentityPolicy.Record(true, original))));
         CloneIdentityPolicy.Decision d = CloneIdentityPolicy.planRestore(
                 true, "create", true, true, original);
@@ -234,6 +236,21 @@ public final class CloneIsolationTest {
         check("小号".equals(CloneNotificationPolicy.displayName(" 小号 ", "微信", "com.tencent.mm", 1)), "custom");
         check("微信 分身2".equals(CloneNotificationPolicy.displayName(null, "微信", "com.tencent.mm", 1)), "default");
         check("微信".equals(CloneNotificationPolicy.displayName("", "微信", "com.tencent.mm", 0)), "first");
+    }
+
+    /** Java 8 / Android 单元测试 classpath 没有 Files.readString、writeString。 */
+    private static String readText(File file) throws Exception {
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static void writeText(File file, String text) throws Exception {
+        FileOutputStream out = new FileOutputStream(file);
+        try {
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+        } finally {
+            out.close();
+        }
     }
 
     private static Map<String, CloneIdentityPolicy.Record> mapOf(String key, CloneIdentityPolicy.Record record) {

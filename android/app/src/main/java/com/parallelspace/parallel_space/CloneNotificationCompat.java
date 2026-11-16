@@ -340,13 +340,15 @@ public final class CloneNotificationCompat {
                 CloneNotificationIndex.peek(CloneIdentityCompat.filesDir(), guest.pkg, guest.userId);
         for (CloneNotificationIndex.Posted p : mine) {
             if (!CloneNotificationPolicy.belongsTo(p.tag, guest.pkg, guest.userId)) continue;
-            invokeCancel(base, p.tag, p.id);
-            CloneNotificationIndex.forget(CloneIdentityCompat.filesDir(), guest.pkg, guest.userId, p.tag);
+            if (invokeCancel(base, p.tag, p.id)) {
+                CloneNotificationIndex.forget(CloneIdentityCompat.filesDir(), guest.pkg, guest.userId, p.tag);
+            }
         }
     }
 
-    private static void invokeCancel(Object base, String tag, int id) {
-        if (base == null) return;
+    /** @return 是否有一个 cancelNotificationWithTag 重载被调用且没有抛出 */
+    private static boolean invokeCancel(Object base, String tag, int id) {
+        if (base == null) return false;
         for (Method m : base.getClass().getMethods()) {
             if (!"cancelNotificationWithTag".equals(m.getName())) continue;
             Object[] argv = new Object[m.getParameterTypes().length];
@@ -383,10 +385,11 @@ public final class CloneNotificationCompat {
             if (!filled || !idSet) continue;
             try {
                 m.invoke(base, argv);
-                return;
+                return true;
             } catch (Throwable ignored) {
             }
         }
+        return false;
     }
 
     private static Object filterActive(Object base, Method method, Object[] args, CloneIdentityCompat.Guest guest) {

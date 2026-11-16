@@ -3,9 +3,12 @@ package com.parallelspace.parallel_space;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -159,26 +162,70 @@ public final class CloneNotificationIndex {
 
     /** 取出并清空这个分身的记录。其他分身的记录还在。 */
     public static List<Posted> take(File filesDir, String pkg, int userId) {
-        synchronized (LOCK) {
-            Map<String, List<Posted>> all = read(filesDir);
-            String key = CloneNotificationPolicy.key(pkg, userId);
-            List<Posted> mine = clear(all, key);
-            write(filesDir, all);
-            return mine;
-        }
+        final List<List<Posted>> out = new ArrayList<List<Posted>>();
+        out.add(Collections.<Posted>emptyList());
+        withFileLock(filesDir, new Runnable() {
+            @Override
+            public void run() {
+                Map<String, List<Posted>> all = read(filesDir);
+                String key = CloneNotificationPolicy.key(pkg, userId);
+                out.set(0, clear(all, key));
+                write(filesDir, all);
+            }
+        });
+        return out.get(0);
     }
 
     private static String keyOf(String pkg, int userId) {
         return CloneNotificationPolicy.key(pkg, userId);
     }
 
-    private static void mutate(File filesDir, String key, String tag, int id, boolean add) {
+    private static void mutate(File filesDir, String key, String tag, final int id, final boolean add) {
         if (filesDir == null || key == null || key.startsWith("#")) return;
+        final String lockKey = key;
+        final String lockTag = tag;
+        withFileLock(filesDir, new Runnable() {
+            @Override
+            public void run() {
+                Map<String, List<Posted>> all = read(filesDir);
+                if (add) add(all, lockKey, lockTag, id);
+                else remove(all, lockKey, lockTag);
+                write(filesDir, all);
+            }
+        });
+    }
+
+    /**
+     * 分身进程和宿主进程都会改这份记录。synchronized 只挡住本进程；
+     * 文件锁让两个进程的读-改-写不会互相覆盖。锁失败时仍在本进程锁里写入。
+     */
+    private static void withFileLock(File filesDir, Runnable body) {
         synchronized (LOCK) {
-            Map<String, List<Posted>> all = read(filesDir);
-            if (add) add(all, key, tag, id);
-            else remove(all, key, tag);
-            write(filesDir, all);
+            if (filesDir == null) return;
+            if (!filesDir.exists() && !filesDir.mkdirs() && !filesDir.isDirectory()) return;
+            File lockFile = new File(filesDir, FILE_NAME + ".lock");
+            FileChannel channel = null;
+            FileLock lock = null;
+            try {
+                channel = FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                lock = channel.lock();
+                body.run();
+            } catch (IOException e) {
+                body.run();
+            } finally {
+                if (lock != null) {
+                    try {
+                        lock.release();
+                    } catch (IOException ignored) {
+                    }
+                }
+                if (channel != null) {
+                    try {
+                        channel.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
         }
     }
 
