@@ -4,9 +4,9 @@ import 'package:provider/provider.dart';
 
 import '../models/clone_app.dart';
 import '../models/device_identity.dart';
+import '../services/clone_actions.dart' show showGlassSnack;
 import '../services/native_bridge.dart';
 import '../state/clone_store.dart';
-import 'glass.dart';
 import 'section_tile.dart';
 
 /// 每个分身单独的 Android ID。默认关闭，避免把已经登录的分身换成新标识。
@@ -116,7 +116,7 @@ class _DeviceIdentitySectionState extends State<DeviceIdentitySection> {
           onTap: shown == null
               ? null
               : () async {
-                  await Clipboard.setData(ClipboardData(text: shown!));
+                  await Clipboard.setData(ClipboardData(text: shown));
                   if (context.mounted) showGlassSnack(context, '已复制设备标识');
                 },
         ),

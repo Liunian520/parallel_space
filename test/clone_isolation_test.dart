@@ -1,10 +1,14 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:parallel_space/models/clone_app.dart';
 import 'package:parallel_space/models/device_identity.dart';
 import 'package:parallel_space/services/clone_data_codec.dart';
+import 'package:parallel_space/services/native_bridge.dart';
 import 'package:parallel_space/state/clone_store.dart';
+import 'package:parallel_space/widgets/device_identity_section.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -64,5 +68,38 @@ void main() {
     expect(store.byInstance('com.a', 0)!.deviceIdIsolated, isFalse);
     store.adoptRestored(packageName: 'com.b', userId: 2, appName: 'B', deviceIdIsolated: true);
     expect(store.byInstance('com.b', 2)!.deviceIdIsolated, isTrue);
+  });
+
+  testWidgets('登录隔离区块能构建，更换前提示重新登录且不能绕过限制', (t) async {
+    NativeBridge.debugIsAndroid = false;
+    addTearDown(() => NativeBridge.debugIsAndroid = null);
+    SharedPreferences.setMockInitialValues({'clones.v1.userOnly': true});
+    final store = CloneStore(await SharedPreferences.getInstance());
+    final clone = CloneApp(uid: 'w:com.a', packageName: 'com.a', appName: '示例', deviceIdIsolated: true);
+    store.adoptRestored(packageName: 'com.a', userId: 0, appName: '示例', deviceIdIsolated: true);
+    await t.pumpWidget(ChangeNotifierProvider<CloneStore>.value(
+      value: store,
+      child: MaterialApp(home: Scaffold(body: DeviceIdentitySection(clone: store.byInstance('com.a', 0) ?? clone))),
+    ));
+    await t.pump();
+    expect(find.text('登录隔离'), findsOneWidget);
+    expect(find.text('独立设备标识'), findsOneWidget);
+    expect(find.text(DeviceIdentity.relaunchNote), findsOneWidget);
+    expect(find.textContaining('不能绕过'), findsOneWidget);
+
+    await t.tap(find.text('更换标识'));
+    await t.pumpAndSettle();
+    expect(find.text('更换设备标识'), findsOneWidget);
+    expect(find.textContaining('重新登录'), findsWidgets);
+    await t.tap(find.text('取消'));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byType(Switch));
+    await t.pumpAndSettle();
+    expect(find.text('关闭独立设备标识'), findsOneWidget);
+    await t.tap(find.text('关闭'));
+    await t.pumpAndSettle();
+    expect(find.text('仅 Android 可写入设备标识'), findsOneWidget);
+    expect(store.byInstance('com.a', 0)!.deviceIdIsolated, isTrue);
   });
 }
