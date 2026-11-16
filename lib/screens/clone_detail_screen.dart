@@ -12,6 +12,7 @@ import '../state/private_space_store.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/blob_background.dart';
 import '../widgets/glass.dart';
+import '../widgets/device_identity_section.dart';
 import '../widgets/location_section.dart';
 import '../widgets/section_tile.dart';
 import 'home_screen.dart';
@@ -152,6 +153,7 @@ class CloneDetailScreen extends StatelessWidget {
                   ),
                 ),
               ]),
+              DeviceIdentitySection(clone: c),
               LocationSection(clone: c),
               SectionCard(title: '省电', children: [
                 GlassTile(

@@ -321,6 +321,7 @@ class CloneStore extends ChangeNotifier {
     required String appName,
     String? customLabel,
     String version = '',
+    bool? deviceIdIsolated,
   }) {
     if (isPresetPackage(packageName, label: appName)) return;
     var c = byInstance(packageName, userId);
@@ -333,11 +334,13 @@ class CloneStore extends ChangeNotifier {
         version: version,
         customLabel: customLabel,
         userAdded: true,
+        deviceIdIsolated: deviceIdIsolated ?? false,
       );
       _clones.add(c);
     } else {
       if (appName.isNotEmpty) c.appName = appName;
       if (customLabel != null && customLabel.trim().isNotEmpty) c.customLabel = customLabel.trim();
+      if (deviceIdIsolated != null) c.deviceIdIsolated = deviceIdIsolated;
       c.userAdded = true;
     }
     _changed();

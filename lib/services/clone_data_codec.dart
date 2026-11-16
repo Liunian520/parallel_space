@@ -20,6 +20,8 @@ class CloneDataEntry {
     this.hasApk = false,
     this.exists = false,
     this.dirs = const [],
+    this.identityEnabled,
+    this.androidId,
   });
 
   final String packageName;
@@ -29,6 +31,12 @@ class CloneDataEntry {
   final bool hasApk;
   final bool exists;
   final List<String> dirs;
+
+  /// 备份里是否写了独立设备标识。旧版清单没有这项，保持 null。
+  final bool? identityEnabled;
+
+  /// 仅在清单带 identity 时有值。不写入日志。
+  final String? androidId;
 
   String get displayName {
     final n = customLabel?.trim() ?? '';
@@ -42,6 +50,11 @@ class CloneDataEntry {
         'appName': appName,
         'hasApk': hasApk,
         if (dirs.isNotEmpty) 'dirs': dirs,
+        if (identityEnabled != null)
+          'identity': {
+            'enabled': identityEnabled,
+            if (androidId != null && androidId!.isNotEmpty) 'androidId': androidId,
+          },
       };
 
   static CloneDataEntry? fromJson(Object? raw, {bool exists = false}) {
@@ -57,6 +70,14 @@ class CloneDataEntry {
         if (e is String && e.isNotEmpty) dirs.add(e);
       }
     }
+    bool? identityEnabled;
+    String? androidId;
+    final identity = raw['identity'];
+    if (identity is Map) {
+      identityEnabled = identity['enabled'] == true;
+      final id = identity['androidId'];
+      if (id is String && id.isNotEmpty) androidId = id;
+    }
     return CloneDataEntry(
       packageName: pkg.trim(),
       userId: userId.clamp(0, 999),
@@ -65,6 +86,8 @@ class CloneDataEntry {
       hasApk: raw['hasApk'] == true,
       exists: exists,
       dirs: dirs,
+      identityEnabled: identityEnabled,
+      androidId: androidId,
     );
   }
 }

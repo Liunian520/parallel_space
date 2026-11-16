@@ -38,5 +38,25 @@
 -keep class com.parallelspace.parallel_space.TaskLabelCompat {
     public static java.lang.String label(int, java.lang.CharSequence);
     public static java.lang.String defaultLabel(java.lang.String, int);
+    public static java.lang.String customName(java.lang.String, int);
+}
+
+# 1.3.35：bcore 字节码补丁按这些名字调用。改名或删掉会导致分身读不到隔离标识，或通知 hook 找不到方法。
+-keep class com.parallelspace.parallel_space.CloneIdentityCompat {
+    public static java.lang.Object rewrite(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+}
+-keep class com.parallelspace.parallel_space.CloneNotificationCompat {
+    public static java.lang.Object FALLBACK;
+    public static java.lang.Object before(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object enqueue(java.lang.Object, java.lang.reflect.Method, java.lang.Object[], int, int);
+    public static java.lang.Object cancel(java.lang.Object, java.lang.reflect.Method, java.lang.Object[], int, int);
+    public static java.lang.Object createChannels(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object createGroups(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object deleteChannel(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object deleteGroup(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object getChannel(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object getChannels(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static java.lang.Object getGroups(java.lang.Object, java.lang.reflect.Method, java.lang.Object[]);
+    public static void cancelPosted(android.content.Context, java.lang.String, int);
 }
 -keep class rikka.shizuku.** { *; }

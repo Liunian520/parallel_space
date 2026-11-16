@@ -121,6 +121,15 @@ object CloneDataBackup {
 
                     meta.put("dirs", dirs)
                     meta.put("skipped", skipped)
+                    val identity = CloneIdentityFile.get(ctx.filesDir, it.packageName, it.userId)
+                    if (identity.enabled || CloneIdentityPolicy.isValidAndroidId(identity.androidId)) {
+                        meta.put(
+                            "identity",
+                            JSONObject()
+                                .put("enabled", identity.enabled)
+                                .put("androidId", identity.androidId ?: ""),
+                        )
+                    }
                     val metaBytes = meta.toString().toByteArray(Charsets.UTF_8)
                     zip.putNextEntry(ZipEntry(prefix + "meta.json"))
                     zip.write(metaBytes)
@@ -222,7 +231,9 @@ object CloneDataBackup {
                 it["hasApk"] == true,
             )
         }
-        val plan = CloneDataPolicy.planRestore(refs, mode, installedKeys(), existingLabels)
+        val installedBefore = installedKeys()
+        val identityMetas = readManifest(file)?.optJSONArray("clones")
+        val plan = CloneDataPolicy.planRestore(refs, mode, installedBefore, existingLabels)
         val work = File(ctx.cacheDir, "clone_data_restore")
         deleteRecursivelySafe(work)
         work.mkdirs()
@@ -252,7 +263,12 @@ object CloneDataBackup {
                 }
                 val cloneDir = File(work, "clones/${p.index}")
                 val one = try {
-                    restoreOne(ctx, p, refs.getOrNull(p.index), cloneDir)
+                    val restored = restoreOne(ctx, p, refs.getOrNull(p.index), cloneDir)
+                    if (restored["r"] == "ok") {
+                        applyIdentity(ctx, p, identityMetas?.optJSONObject(p.index), installedBefore, restored)
+                    } else {
+                        restored
+                    }
                 } catch (t: Throwable) {
                     Log.e(TAG, "restore ${p.packageName}#${p.targetUserId}", t)
                     mapOf(
@@ -282,6 +298,45 @@ object CloneDataBackup {
             deleteIfInBackupCache(ctx, file)
         }
         return mapOf("r" to r, "ok" to ok, "fail" to fail, "items" to results)
+    }
+
+    private fun applyIdentity(
+        ctx: Context,
+        p: CloneDataPolicy.PlanItem,
+        meta: org.json.JSONObject?,
+        installedBefore: Set<String>,
+        restored: Map<String, Any?>,
+    ): Map<String, Any?> {
+        val identity = meta?.optJSONObject("identity")
+        val present = identity != null
+        val enabled = identity?.optBoolean("enabled") == true
+        val androidId = identity?.optString("androidId", "")?.takeIf { it.isNotEmpty() }
+        val sourceExists = installedBefore.contains(CloneDataPolicy.CloneRef.key(p.packageName, p.sourceUserId))
+        val decision = CloneIdentityPolicy.planRestore(sourceExists, p.action, present, enabled, androidId)
+        return try {
+            val record = CloneIdentityFile.applyDecision(
+                ctx.filesDir,
+                p.packageName,
+                p.targetUserId,
+                decision,
+                java.security.SecureRandom(),
+            )
+            val out = LinkedHashMap(restored)
+            out["deviceIdIsolated"] = record.enabled
+            if (decision.action == CloneIdentityPolicy.APPLY &&
+                enabled &&
+                CloneIdentityPolicy.isValidAndroidId(androidId) &&
+                record.androidId != androidId
+            ) {
+                out["identityWarning"] = "为避免和另一个分身使用同一个标识，已另外生成。打开后可能需要重新登录。"
+            }
+            out
+        } catch (t: Throwable) {
+            Log.w(TAG, "identity ${p.packageName}#${p.targetUserId}", t)
+            val out = LinkedHashMap(restored)
+            out["identityWarning"] = "数据已恢复，设备标识没有写入，原标识文件未改动。"
+            out
+        }
     }
 
     private fun restoreOne(

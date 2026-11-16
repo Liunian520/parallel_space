@@ -189,7 +189,39 @@ class MainActivity : FlutterFragmentActivity() {
                     "clearCameraDiag" -> { CameraDiag.clear(this); result.success(true) }
                     "launchVirtual" -> launchVirtualWithPerms(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0, result)
                     "syncCloneNames" -> result.success(CloneNames.sync(this, call.argument<List<Map<String, Any?>>>("items") ?: emptyList()))
-                    "deleteVirtual" -> result.success(VirtualEngine.delete(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
+                    "deleteVirtual" -> {
+                        val pkg = call.argument<String>("pkg")!!
+                        val userId = call.argument<Int>("userId") ?: 0
+                        val deleted = VirtualEngine.delete(pkg, userId)
+                        if (deleted["r"] == "ok") {
+                            CloneIdentityFile.remove(filesDir, pkg, userId)
+                            CloneNotificationCompat.cancelPosted(this, pkg, userId)
+                        }
+                        result.success(deleted)
+                    }
+                    "getCloneIdentity" -> {
+                        val pkg = call.argument<String>("pkg") ?: ""
+                        val userId = call.argument<Int>("userId") ?: 0
+                        val rec = CloneIdentityFile.get(filesDir, pkg, userId)
+                        result.success(mapOf("enabled" to rec.enabled, "androidId" to (rec.androidId ?: "")))
+                    }
+                    "setCloneIdentityEnabled" -> {
+                        val pkg = call.argument<String>("pkg") ?: ""
+                        val userId = call.argument<Int>("userId") ?: 0
+                        val enabled = call.argument<Boolean>("enabled") == true
+                        background(result) {
+                            val rec = CloneIdentityFile.setEnabled(filesDir, pkg, userId, enabled, java.security.SecureRandom())
+                            mapOf("r" to "ok", "enabled" to rec.enabled, "androidId" to (rec.androidId ?: ""))
+                        }
+                    }
+                    "regenerateCloneIdentity" -> {
+                        val pkg = call.argument<String>("pkg") ?: ""
+                        val userId = call.argument<Int>("userId") ?: 0
+                        background(result) {
+                            val rec = CloneIdentityFile.regenerate(filesDir, pkg, userId, java.security.SecureRandom())
+                            mapOf("r" to "ok", "enabled" to rec.enabled, "androidId" to (rec.androidId ?: ""))
+                        }
+                    }
                     "isVirtualCloned" -> result.success(VirtualEngine.isCloned(call.argument<String>("pkg")!!))
                     "canInstallPackages" -> result.success(canInstallPackages())
                     "openUnknownAppSources" -> result.success(openUnknownAppSources())

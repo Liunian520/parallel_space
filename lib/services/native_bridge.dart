@@ -480,4 +480,30 @@ class NativeBridge {
     });
     return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
   }
+
+  static Future<Map<String, dynamic>?> getCloneIdentity(String pkg, {int userId = 0}) async {
+    final m = await _call<Map>('getCloneIdentity', {'pkg': pkg, 'userId': userId});
+    return m == null ? null : Map<String, dynamic>.from(m);
+  }
+
+  static Future<Map<String, dynamic>> setCloneIdentityEnabled(String pkg, {required bool enabled, int userId = 0}) {
+    return _identityCall('setCloneIdentityEnabled', {'pkg': pkg, 'userId': userId, 'enabled': enabled});
+  }
+
+  static Future<Map<String, dynamic>> regenerateCloneIdentity(String pkg, {int userId = 0}) {
+    return _identityCall('regenerateCloneIdentity', {'pkg': pkg, 'userId': userId});
+  }
+
+  static Future<Map<String, dynamic>> _identityCall(String method, Map<String, Object?> args) async {
+    if (!_android) return {'r': 'unsupported', 'detail': '仅 Android 可写入设备标识'};
+    try {
+      final m = await _ch.invokeMethod<Map>(method, args);
+      if (m == null) return {'r': 'error', 'detail': '没有写入设备标识'};
+      return Map<String, dynamic>.from(m);
+    } on PlatformException catch (e) {
+      return {'r': 'error', 'detail': e.message ?? '没有写入设备标识'};
+    } on MissingPluginException {
+      return {'r': 'error', 'detail': '没有写入设备标识'};
+    }
+  }
 }

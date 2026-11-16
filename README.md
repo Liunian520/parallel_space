@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.34-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.35-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -22,11 +22,13 @@ Alter Ego 用进程内虚拟引擎（NewBlackbox / Bcore）创建和启动分身
 | 📍 | 虚拟定位 | 系统级模拟位置，前台服务持续推送，对整机生效 |
 | 🧰 | 工具箱 | 分身在前台时出现可拖动、可收起的悬浮小窗；账号行内复制、底部一键填入 |
 | 🔑 | 密码本 | 在 App 内添加/管理账号；分身工具箱只读，可一键填入或复制；本机明文存储，不设生物识别门禁 |
-| 💾 | 分身数据备份 | 设置里可导出某个或全部分身的应用数据和登录状态（`.aebak`），换机或重装后可覆盖或新建恢复；覆盖时会先清空目标数据目录；密码本和 PIN 不包含在内 |
+| 💾 | 分身数据备份 | 设置里可导出某个或全部分身的应用数据、登录状态和独立设备标识（`.aebak`），换机或重装后可覆盖或新建恢复；覆盖时会先清空目标数据目录；密码本和 PIN 不包含在内 |
+| 🔐 | 登录隔离 | 每个分身可选单独的 Android ID，默认关闭。打开或更换后可能要重新登录，不能绕过应用服务器的账号限制 |
+| 🔔 | 通知隔离 | 分身通知的 tag、id、渠道互相分开，取消不会误伤其他分身或 Alter Ego 自己的通知；状态栏显示分身名称。不是统一通知列表 |
 | 🔄 | 应用内更新 | 设置里检查更新；清单多源（GitHub / jsDelivr / ghproxy / 网盘直链）并防缓存；APK 走网盘永久直链 `/f/...`；失败时可浏览器打开分享页 |
 | 📱 | 机型适配 | 小米 / Redmi / POCO、华为、荣耀、OPPO / 一加 / realme、vivo / iQOO、三星、魅族和 Pixel 的权限页集中处理，设置里可以逐项查看 |
 
-另外还有：私密空间（PIN / 生物识别）、配置备份与迁移（不含登录数据、PIN 和密码本）、分身数据备份与恢复（含登录状态，不含密码本和 PIN）、桌面小组件、主题（跟随系统 / 动态取色）。
+另外还有：私密空间（PIN / 生物识别）、配置备份与迁移（不含登录数据、PIN 和密码本）、分身数据备份与恢复（含登录状态和可选的独立设备标识，不含密码本和 PIN）、桌面小组件、主题（跟随系统 / 动态取色）。
 
 不做指纹伪装、计算器伪装，也不会把应用从最近任务里隐藏。
 
@@ -65,15 +67,15 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.34+12334**。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.35+12335**。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
-`android/app/libs/bcore-release.aar` 带有进程名字节码补丁，说明见 `android/app/libs/BCORE_PATCH.txt`。`proguard-rules.pro` 必须保留 `blackbox`、`blackreflection`、`black.**` 和 `me.weishu`，否则发布包里虚拟引擎无法初始化。
+`android/app/libs/bcore-release.aar` 带有进程名、最近任务标题、设备标识和通知隔离的字节码补丁，说明见 `android/app/libs/BCORE_PATCH.txt`。`proguard-rules.pro` 必须保留 `blackbox`、`blackreflection`、`black.**`、`me.weishu`，以及补丁调用的 `ProcessNameCompat`、`TaskLabelCompat`、`CloneIdentityCompat`、`CloneNotificationCompat`，否则发布包里虚拟引擎无法初始化，或分身隔离不生效。
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.34`（versionCode `12334`），下一次是 `1.3.35`（`12335`）。
+只把修订号加 1：当前 `1.3.35`（versionCode `12335`），下一次是 `1.3.36`（`12336`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 

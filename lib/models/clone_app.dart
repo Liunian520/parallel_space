@@ -20,6 +20,7 @@ class CloneApp {
     this.frozen = false,
     this.autoFreezeMin = 0,
     this.userAdded = false,
+    this.deviceIdIsolated = false,
     int? lastActiveMs,
   }) : lastActiveMs = lastActiveMs ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -84,6 +85,9 @@ class CloneApp {
   /// 仅「添加分身」写入为 true；同步绝不能把系统预装变成用户分身。
   bool userAdded;
 
+  /// 是否对该分身使用单独保存的 Android ID。真正的标识在原生文件里，这里只记开关。
+  bool deviceIdIsolated;
+
   /// 默认名：第一个分身为应用名，其余为「应用名 分身N」（N = userId + 1）。
   String get defaultName => userId <= 0 ? appName : '$appName 分身${userId + 1}';
 
@@ -111,6 +115,7 @@ class CloneApp {
         'af': autoFreezeMin,
         'last': lastActiveMs,
         'ua': userAdded,
+        if (deviceIdIsolated) 'iso': true,
       };
 
   /// 宽容解析。没有包名的旧版“模拟分身”返回 null（迁移时丢弃）。
@@ -149,6 +154,7 @@ class CloneApp {
       lastActiveMs: i('last'),
       // 缺省 ua：旧数据视为未标记；加载后由 CloneStore 再按预装名单清洗
       userAdded: v<bool>('ua') ?? false,
+      deviceIdIsolated: v<bool>('iso') ?? false,
     );
   }
 }

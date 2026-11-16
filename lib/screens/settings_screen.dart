@@ -144,7 +144,7 @@ class SettingsScreen extends StatelessWidget {
             GlassTile(
               icon: Icons.folder_zip_rounded,
               title: '备份分身数据',
-              subtitle: '导出某个或全部分身的应用数据和登录状态，换机或重装后可恢复',
+              subtitle: '导出应用数据、登录状态和独立设备标识。换机或重装后可恢复',
               onTap: () => exportCloneData(context),
             ),
             GlassTile(

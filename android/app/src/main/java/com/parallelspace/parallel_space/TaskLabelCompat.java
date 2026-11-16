@@ -37,6 +37,20 @@ public final class TaskLabelCompat {
         return defaultLabel(base, userId);
     }
 
+    /** 自定义名；没有则 null。分身通知和最近任务共用 clone_names.json。 */
+    public static String customName(String pkg, int userId) {
+        try {
+            if (pkg == null || pkg.isEmpty()) return null;
+            JSONObject names = load();
+            if (names == null) return null;
+            String custom = names.optString(pkg + "#" + userId, "");
+            if (custom.trim().isEmpty()) return null;
+            return custom.trim();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     /** 与 Dart 侧 CloneApp.defaultName 保持一致。 */
     public static String defaultLabel(String appLabel, int userId) {
         if (userId <= 0) return appLabel;

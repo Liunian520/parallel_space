@@ -195,6 +195,7 @@ Future<void> importCloneData(BuildContext context) async {
   }
   if (clones.length > 8) summary.writeln('· …还有 ${clones.length - 8} 个');
   summary.write('\n恢复会写入登录状态，覆盖已有分身时，该分身里的当前数据会被替换。密码本和 PIN 不会被改动。');
+  summary.write('\n备份里如果开了独立设备标识：覆盖会沿用原来的标识；再新建一份会另给一个，避免和留下的分身相同。旧版备份没有这项，覆盖后改回本机真实标识，已经生成过的标识仍保留。');
 
   String? mode;
   if (!anyExists) {
@@ -266,19 +267,32 @@ Future<void> importCloneData(BuildContext context) async {
         userId: userId,
         appName: appName,
         customLabel: label.isEmpty ? null : label,
+        deviceIdIsolated: e['deviceIdIsolated'] is bool ? e['deviceIdIsolated'] as bool : null,
       );
     }
   }
   final okN = (restored['ok'] as num?)?.toInt() ?? 0;
   final failN = (restored['fail'] as num?)?.toInt() ?? 0;
   final detail = restored['detail']?.toString();
+  final identityNote = _identityWarn(items);
   showGlassSnack(context, switch (code2) {
-    'ok' => '已恢复 $okN 个分身，可在主屏打开。第一次启动可能稍慢。',
-    'partial' => '恢复了 $okN 个分身，$failN 个失败。${_firstFail(items)}',
+    'ok' => '已恢复 $okN 个分身，可在主屏打开。第一次启动可能稍慢。${identityNote.isEmpty ? '' : ' $identityNote'}',
+    'partial' => '恢复了 $okN 个分身，$failN 个失败。${_firstFail(items)}${identityNote.isEmpty ? '' : ' $identityNote'}',
     'no_apk' => detail ?? '备份里没有安装包，本机也没有该应用，无法恢复',
     'engine_unavailable' => '仅支持虚拟引擎分身，当前引擎不可用',
     _ => detail ?? '恢复失败',
   });
+}
+
+String _identityWarn(Object? items) {
+  if (items is! List) return '';
+  for (final e in items) {
+    if (e is Map && e['identityWarning'] is String) {
+      final text = (e['identityWarning'] as String).trim();
+      if (text.isNotEmpty) return text;
+    }
+  }
+  return '';
 }
 
 String _firstFail(Object? items) {
