@@ -15,7 +15,7 @@
 
 ### 其他
 
-- 版本 `1.3.35+12335`（arm64 拆分包的 versionCode 按 Flutter 规则为 14335，需在打包机上核对，本次没有编译 APK）。
+- 版本 `1.3.35+12335`。打包机已打出 arm64 release，versionCode 14335，签名证书与 1.3.34 相同。APK SHA-256 `2fe1268042827a0d0648740648075340ec06010a8e906465c5445beccebdb284`（21640208 字节）。`flutter analyze` 干净，131 个 Flutter 测试通过；公开通知 SDK 检查在 Android 36 上通过；四个 Java `main` 套件通过。Gradle 能编译这些 Java 与单元测试源码，但套件入口是 `main()` 不是 JUnit，过滤后的测试任务报告 No tests found，不能当成 JUnit 已通过。真机上的登录隔离和通知隔离行为尚未验证。
 
 ## [1.3.34] - 2026-11-16
 
