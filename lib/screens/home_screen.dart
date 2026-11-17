@@ -23,7 +23,6 @@ import 'vault_screen.dart';
 /// 移除分身：在工作资料中隐藏该应用（数据保留，可再次复制恢复）。若正在模拟定位则先停止。
 Future<bool> deleteClone(BuildContext context, CloneApp c) async {
   final store = context.read<CloneStore>();
-  final loc = context.read<LocationStore>();
   final vs = await NativeBridge.virtualStatus();
   String r;
   String? detail;
@@ -35,18 +34,22 @@ Future<bool> deleteClone(BuildContext context, CloneApp c) async {
   } else {
     r = await NativeBridge.hideWorkApp(c.packageName);
   }
-  if (!context.mounted) return false;
-  if (r == 'ok') {
-    if (store.mockingUid == c.uid) {
-      if (loc.activeCloneUid == c.uid) loc.stopRoute();
-      await NativeBridge.stopMock();
-      if (!context.mounted) return false;
-    }
-    store.remove(c.uid);
-    return true;
+  if (r != 'ok') {
+    if (context.mounted) showGlassSnack(context, '移除失败：${detail ?? r}');
+    return false;
   }
-  showGlassSnack(context, '移除失败：${detail ?? r}');
-  return false;
+  // 引擎已经删掉。停模拟定位可以因界面卸下而跳过，名单和默认必须落盘。
+  if (store.mockingUid == c.uid) {
+    if (context.mounted) {
+      final loc = context.read<LocationStore>();
+      if (loc.activeCloneUid == c.uid) loc.stopRoute();
+    }
+    try {
+      await NativeBridge.stopMock();
+    } catch (_) {}
+  }
+  store.remove(c.uid);
+  return true;
 }
 
 Future<bool> confirmDelete(BuildContext context, CloneApp c) async =>

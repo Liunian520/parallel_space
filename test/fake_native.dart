@@ -135,7 +135,8 @@ class FakeNative {
           if (!virtualAvailable) 'error': 'disabled_in_test',
         };
       case 'listVirtualClones':
-        return virtualAvailable ? work : <Map<String, dynamic>>[];
+        if (!virtualAvailable) return {'complete': false, 'error': 'not_ready', 'apps': <Map<String, dynamic>>[]};
+        return {'complete': true, 'apps': work};
       case 'cloneVirtual':
         if (!virtualAvailable) return {'r': 'engine_unavailable'};
         final pkg = a['pkg'] as String;

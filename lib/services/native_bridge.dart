@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_info.dart';
+import 'clone_enumeration.dart';
 
 enum MockResult { ok, notMockApp, error }
 
@@ -256,9 +257,17 @@ class NativeBridge {
     return m == null ? {'available': false, 'error': 'retry_unavailable'} : Map<String, dynamic>.from(m);
   }
 
-  static Future<List<AppInfo>> listVirtualClones() async {
-    final r = await _call<List>('listVirtualClones');
-    return <AppInfo>[if (r != null) ...r.map(AppInfo.fromMap).nonNulls];
+  /// 引擎列举。通道异常、未就绪、部分 user 失败都不是权威空列表。
+  static Future<CloneEnumeration> listVirtualClones() async {
+    if (!_android) return const CloneEnumeration(authoritative: false, apps: [], error: 'not_android');
+    try {
+      final raw = await _ch.invokeMethod<Object?>('listVirtualClones');
+      return CloneEnumeration.parse(raw);
+    } on PlatformException catch (e) {
+      return CloneEnumeration(authoritative: false, apps: const [], error: e.message ?? e.code);
+    } on MissingPluginException {
+      return const CloneEnumeration(authoritative: false, apps: [], error: 'missing');
+    }
   }
 
   /// userId < 0：新建一个实例（再分身一个）；返回里带 userId。

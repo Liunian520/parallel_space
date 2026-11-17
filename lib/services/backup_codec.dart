@@ -33,6 +33,26 @@ class BackupData {
   final DateTime? exportedAt;
 }
 
+/// 可选的默认分身字段。没有、或 null：不当成错误。不是数组：跳过并计一次忽略。
+/// 数组里的坏条目也不按 userId 套用。
+List<DefaultCloneChoice> readDefaults(Object? raw, void Function() skip) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    skip();
+    return const [];
+  }
+  final out = <DefaultCloneChoice>[];
+  for (final e in raw) {
+    final parsed = DefaultCloneChoice.tryParse(e);
+    if (parsed == null) {
+      skip();
+    } else {
+      out.add(parsed);
+    }
+  }
+  return out;
+}
+
 class BackupCodec {
   static const format = 'parallel_space.backup';
   static const version = 3;
@@ -104,7 +124,7 @@ class BackupCodec {
     });
     final favs = list<FavoriteLocation>('favorites', FavoriteLocation.fromJson);
     final routes = list<MockRoute>('routes', MockRoute.fromJson);
-    final defaults = list<DefaultCloneChoice>('defaults', DefaultCloneChoice.tryParse);
+    final defaults = readDefaults(root['defaults'], () => skipped++);
     final rawSettings = root['settings'];
     final settings = <String, dynamic>{};
     if (rawSettings is Map) {

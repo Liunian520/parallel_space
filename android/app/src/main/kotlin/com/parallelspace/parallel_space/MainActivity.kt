@@ -174,7 +174,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "repairWorkLink" -> result.success(WorkProfile.repairLink(this, this))
                     "virtualStatus" -> result.success(VirtualEngine.status())
                     "retryVirtualEngine" -> result.success(VirtualEngine.retry(this))
-                    "listVirtualClones" -> result.success(VirtualEngine.listCloned())
+                    "listVirtualClones" -> result.success(VirtualEngine.listReport())
                     "cloneVirtual" -> result.success(VirtualEngine.clone(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0))
                     "cameraSelfTest" -> {
                         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {

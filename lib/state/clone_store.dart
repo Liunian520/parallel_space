@@ -443,8 +443,9 @@ class CloneStore extends ChangeNotifier {
       _applyVirtual(vs);
 
       if (engineAvailable) {
-        final apps = await NativeBridge.listVirtualClones();
-        sync(apps);
+        final listed = await NativeBridge.listVirtualClones();
+        // 不完整或失败的列举不能当成「这些分身已经没了」。
+        if (listed.authoritative) sync(listed.apps);
         // 仍探测工作资料状态（设置页展示），但不依赖它
         status = (await NativeBridge.workSnapshot()).status;
       } else {

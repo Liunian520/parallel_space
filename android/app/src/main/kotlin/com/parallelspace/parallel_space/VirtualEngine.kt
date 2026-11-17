@@ -106,11 +106,16 @@ object VirtualEngine {
         "userId" to USER,
     )
 
-    /** 已有的 BlackBox 用户 id（含 0）。每个 userId 是一份独立数据空间。 */
-    fun userIds(): List<Int> = try {
-        (listOf(USER) + BlackBoxCore.get().getUsers().mapNotNull { u -> userIdOf(u) }).distinct().sorted()
-    } catch (_: Throwable) {
-        listOf(USER)
+    /** 已有的 BlackBox 用户 id（含 0）。每个 userId 是一份独立数据空间。读失败时只返回 0，调用方不能把它当成完整名单。 */
+    fun userIds(): List<Int> = readUserIds().second.ifEmpty { listOf(USER) }
+
+    /** first = 用户列表是否读全。失败时不能把「只有 0」当成其余 user 都没了。 */
+    private fun readUserIds(): Pair<Boolean, List<Int>> = try {
+        val extra = BlackBoxCore.get().getUsers().mapNotNull { u -> userIdOf(u) }
+        true to (listOf(USER) + extra).distinct().sorted()
+    } catch (t: Throwable) {
+        Log.w(TAG, "userIds", t)
+        false to emptyList()
     }
 
     private fun userIdOf(u: Any?): Int? = try {
@@ -129,11 +134,20 @@ object VirtualEngine {
         }
     }
 
-    /** 每个 (包名, userId) 是一个分身实例。 */
-    fun listCloned(): List<Map<String, Any>> {
-        if (!ready) return emptyList()
+    /**
+     * 分身列举。complete=true 且没有 error 才表示这份名单是完整的，缺席的可以删。
+     * 引擎未就绪、用户列表失败、或某个 user 抛错时 complete=false，调用方必须保留已有分身。
+     */
+    fun listReport(): Map<String, Any?> {
+        if (!ready) {
+            return mapOf("complete" to false, "error" to (lastError ?: "not_ready"), "apps" to emptyList<Any>())
+        }
+        val (known, users) = readUserIds()
+        // 用户列表读失败时仍尽量列出 user 0，但 complete 必须是 false，避免把其他 user 当成已删除。
+        val ids = if (known) users else listOf(USER)
         val out = ArrayList<Map<String, Any>>()
-        for (uid in userIds()) {
+        var failed = 0
+        for (uid in ids) {
             try {
                 for (pi in BlackBoxCore.get().getInstalledPackages(0, uid)) {
                     val pkg = pi.packageName ?: continue
@@ -156,11 +170,27 @@ object VirtualEngine {
                     )
                 }
             } catch (t: Throwable) {
+                failed++
                 Log.e(TAG, "listCloned user=$uid", t)
             }
         }
-        return out
+        val complete = CloneEnumPolicy.authoritative(true, known, failed)
+        val error = when {
+            !known -> "users_unknown"
+            failed > 0 -> "partial_users"
+            else -> null
+        }
+        return mapOf(
+            "complete" to complete,
+            "apps" to out,
+            if (error != null) "error" to error,
+        )
     }
+
+    /** 备份等只需要应用行。不完整时这里仍是已读到的部分，删除决定以 [listReport] 的 complete 为准。 */
+    @Suppress("UNCHECKED_CAST")
+    fun listCloned(): List<Map<String, Any>> =
+        (listReport()["apps"] as? List<Map<String, Any>>) ?: emptyList()
 
     fun isCloned(pkg: String, userId: Int = USER): Boolean = try {
         ready && BlackBoxCore.get().isInstalled(pkg, userId)
