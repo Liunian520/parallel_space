@@ -13,7 +13,7 @@
 
 ### 其他
 
-- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14337。这次没有在远程编译或上传 APK，打包机尚未验证这次安装包。
+- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14337。打包机对上一提交的 release Kotlin 编译失败：`listReport` 里 `mapOf` 的 `if` 缺少 else。这一笔改成先建 map，有错误时再放入 `error`。契约不变：`complete`、`apps`，以及可选的 `error`；只有 `complete=true` 且没有 `error` 才删除缺席分身。安装包仍未打出，也未上传。
 
 ## [1.3.36] - 2026-11-16
 

@@ -180,11 +180,12 @@ object VirtualEngine {
             failed > 0 -> "partial_users"
             else -> null
         }
-        return mapOf(
+        val report = linkedMapOf<String, Any?>(
             "complete" to complete,
             "apps" to out,
-            if (error != null) "error" to error,
         )
+        if (error != null) report["error"] = error
+        return report
     }
 
     /** 备份等只需要应用行。不完整时这里仍是已读到的部分，删除决定以 [listReport] 的 complete 为准。 */
