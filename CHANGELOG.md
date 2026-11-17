@@ -13,7 +13,7 @@
 
 ### 其他
 
-- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14337。打包机对上一提交的 release Kotlin 编译失败：`listReport` 里 `mapOf` 的 `if` 缺少 else。这一笔改成先建 map，有错误时再放入 `error`。契约不变：`complete`、`apps`，以及可选的 `error`；只有 `complete=true` 且没有 `error` 才删除缺席分身。安装包仍未打出，也未上传。
+- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 是 14337。打包机对上一提交 `83ab3fc` 的 release Kotlin 编译失败：`listReport` 里 `mapOf` 的 `if` 缺少 else。这一笔改成先建 map，有错误时再放入 `error`。契约不变：`complete`、`apps`，以及可选的 `error`；只有 `complete=true` 且没有 `error` 才删除缺席分身。打包机已对 `8323338` 打出 arm64 release，versionName 1.3.37，versionCode 14337，签名证书与 1.3.36 相同。APK SHA-256 `1d7e9b3959358c598087f68a3af8687589196c72a7ad36e3d98b0c3c510c16f2`（21705768 字节）。安装包里没有网盘 API key / token。此时尚未上传。`flutter analyze` 干净，153 个 Flutter 测试通过；公开通知 SDK 检查在 Android 36 上通过；五个 Java `main` 套件通过（含 CloneEnumPolicyTest）。这些套件入口是 `main()` 不是 JUnit，不能当成 JUnit 已通过。真机上的这次修复尚未验证。
 
 ## [1.3.36] - 2026-11-16
 
