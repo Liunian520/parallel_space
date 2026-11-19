@@ -428,6 +428,21 @@ class NativeBridge {
 
   static Future<Map?> vaultList() => _call<Map>('vaultList');
 
+  /// 只收录解析到的非空应用名。失败和不可见都变成空表，不把异常文本返回给界面。
+  static Future<Map<String, String>> vaultAppLabels(List<String> pkgs) async {
+    final raw = await _call<Map>('vaultAppLabels', {'pkgs': pkgs});
+    final labels = raw?['labels'];
+    if (labels is! Map) return const {};
+    final out = <String, String>{};
+    labels.forEach((key, value) {
+      if (key is! String || value is! Map) return;
+      if (value['state'] != 'named') return;
+      final label = value['label'];
+      if (label is String && label.trim().isNotEmpty) out[key] = label.trim();
+    });
+    return out;
+  }
+
   /// 'ok' 或错误说明。
   static Future<String?> vaultUpsert(Map<String, String> entry) => _call<String>('vaultUpsert', entry);
 

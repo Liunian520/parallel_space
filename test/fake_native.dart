@@ -288,6 +288,8 @@ class FakeNative {
         return null;
       case 'vaultList':
         return {'locked': false, 'entries': vault};
+      case 'vaultAppLabels':
+        return {'labels': <String, dynamic>{}};
       case 'vaultUpsert':
         final id = a['id'] is String && (a['id'] as String).isNotEmpty ? a['id'] as String : 'id${vault.length + 1}';
         vault.removeWhere((e) => e['id'] == id);

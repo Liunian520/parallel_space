@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -33,6 +35,9 @@ class _VaultScreenState extends State<VaultScreen> {
   List<VaultEntry> _entries = const [];
   String _currentPkg = '';
   String _query = '';
+  int _labelGen = 0;
+  String _labelKey = '';
+  Map<String, String> _asyncLabels = const {};
   final _search = TextEditingController();
 
   @override
@@ -75,6 +80,26 @@ class _VaultScreenState extends State<VaultScreen> {
         if (list is List) ...list.map(VaultEntry.fromMap).nonNulls,
       ];
     });
+    final pkgs = _entries.map((e) => e.packageName).where((p) => p.isNotEmpty).toSet().toList()..sort();
+    final key = pkgs.join('\n');
+    if (key != _labelKey) {
+      _labelKey = key;
+      unawaited(_resolveLabels(pkgs));
+    }
+  }
+
+  Future<void> _resolveLabels(List<String> pkgs) async {
+    final gen = ++_labelGen;
+    final names = await NativeBridge.vaultAppLabels(pkgs);
+    if (!mounted || gen != _labelGen) return;
+    final applied = acceptVaultLabelResponse(
+      responseGen: gen,
+      currentGen: _labelGen,
+      names: names,
+      queryNow: _query,
+    );
+    if (!mounted || applied == null) return;
+    setState(() => _asyncLabels = applied.names);
   }
 
   Future<void> _edit({VaultEntry? existing}) async {
@@ -135,7 +160,21 @@ class _VaultScreenState extends State<VaultScreen> {
       for (final c in store.clones) c.packageName: c.customName,
       for (final c in store.clones) c.uid: c.customName,
     };
-    final filtered = filterVaultEntries(_entries, _query);
+    final syncAppNames = <String, List<String>>{};
+    final cloneNames = <String, String>{};
+    for (final c in store.clones) {
+      final app = c.appName.trim();
+      if (app.isNotEmpty) (syncAppNames[c.packageName] ??= []).add(app);
+      final custom = c.customName.trim();
+      if (custom.isNotEmpty) cloneNames[c.uid] = custom;
+    }
+    final filtered = filterVaultEntries(
+      _entries,
+      _query,
+      syncAppNames: syncAppNames,
+      asyncAppLabels: _asyncLabels,
+      cloneNames: cloneNames,
+    );
     final groups = groupVaultEntries(
       filtered,
       currentPackage: _currentPkg.isNotEmpty ? _currentPkg : widget.initialPackage,
@@ -179,7 +218,7 @@ class _VaultScreenState extends State<VaultScreen> {
                     controller: _search,
                     onChanged: (v) => setState(() => _query = v),
                     decoration: InputDecoration(
-                      hintText: '搜索备注名、账号、分身…',
+                      hintText: '搜索备注名、账号、应用或分身…',
                       border: InputBorder.none,
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: _query.isEmpty

@@ -77,6 +77,8 @@ class ToolboxOverlayService : Service() {
     private var resolvedLabel: String = ""
     private var resolvedIcon: Drawable? = null
     private val vaultCache = AtomicReference<List<VaultStore.Entry>>(emptyList())
+    private val headingMemo = HashMap<String, String>()
+    private val headingBusy = HashSet<String>()
     private var lastWatchLogAt = 0L
     /** 视图代数：removeView / 重建时递增，避免旧动画回调整坏新窗。 */
     private var viewGen = 0
@@ -1120,23 +1122,32 @@ class ToolboxOverlayService : Service() {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 setPadding(dp(4), dp(2), dp(4), dp(6))
             })
-            val sorted = all.sortedWith(
-                compareBy<VaultStore.Entry> { e -> if (matchesInstance(e)) 0 else 1 }
-                    .thenBy { remarkTitle(it).lowercase() },
-            )
-            val hasCurrent = sorted.any { matchesInstance(it) }
-            var sectionPlaced = ""
-            for (e in sorted) {
-                val want = when {
-                    matchesInstance(e) -> "当前分身"
-                    hasCurrent -> "其他分身"
-                    else -> "全部账号"
+            val byId = HashMap<String, VaultStore.Entry>(all.size)
+            val rows = ArrayList<VaultAppHeading.Row>(all.size)
+            for (e in all) {
+                byId[e.id] = e
+                rows.add(VaultAppHeading.Row(e.id, e.pkg, e.label, matchesInstance(e)))
+            }
+            for (group in VaultAppHeading.sections(rows, pkg)) {
+                val title = headingMemo[group.pkg] ?: if (group.pkg.isEmpty()) {
+                    VaultAppHeading.heading(group.pkg, VaultAppHeading.Kind.UNAVAILABLE, "").also {
+                        headingMemo[group.pkg] = it
+                    }
+                } else {
+                    VaultAppHeading.heading(group.pkg, VaultAppHeading.Kind.PENDING, "")
                 }
-                if (sectionPlaced != want) {
-                    sectionPlaced = want
-                    col.addView(section(want))
+                col.addView(section(title).apply {
+                    tag = group.pkg
+                    isClickable = false
+                    isLongClickable = false
+                })
+                if (group.pkg.isNotEmpty() && !headingMemo.containsKey(group.pkg)) {
+                    resolveSectionHeading(group.pkg)
                 }
-                col.addView(remarkRow(e))
+                for (row in group.rows) {
+                    val entry = byId[row.id] ?: continue
+                    col.addView(remarkRow(entry))
+                }
             }
         }
         scroll.addView(col)
@@ -1511,6 +1522,37 @@ class ToolboxOverlayService : Service() {
         val cu = e.cloneUid
         if (cu.isNotBlank()) return cu == uid || (cu == pkg && CloneId.userId(uid) == 0)
         return e.pkg == pkg && CloneId.userId(uid) == 0
+    }
+
+    /** 分段标题的应用名。只改已有 TextView 的文字，不触发重建。 */
+    private fun resolveSectionHeading(packageName: String) {
+        if (packageName.isEmpty()) return
+        if (headingMemo.containsKey(packageName) || !headingBusy.add(packageName)) return
+        runBg {
+            val text = try {
+                lookupSectionHeading(packageName)
+            } catch (t: Throwable) {
+                VaultAppHeading.heading(packageName, VaultAppHeading.Kind.UNAVAILABLE, "")
+            }
+            handler.post {
+                headingBusy.remove(packageName)
+                headingMemo[packageName] = text
+                card?.findViewWithTag<TextView>(packageName)?.text = text
+            }
+        }
+    }
+
+    private fun lookupSectionHeading(packageName: String): String {
+        return try {
+            val info = packageManager.getApplicationInfo(packageName, 0)
+            val label = packageManager.getApplicationLabel(info)?.toString()
+            val kind = VaultAppHeading.kindFromLookup(true, label, false, false)
+            VaultAppHeading.heading(packageName, kind, label)
+        } catch (e: PackageManager.NameNotFoundException) {
+            VaultAppHeading.heading(packageName, VaultAppHeading.kindFromLookup(false, null, true, false), "")
+        } catch (t: Throwable) {
+            VaultAppHeading.heading(packageName, VaultAppHeading.kindFromLookup(false, null, false, true), "")
+        }
     }
 
     private fun openAccessibility() {

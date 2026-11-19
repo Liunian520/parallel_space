@@ -9,6 +9,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -247,6 +248,7 @@ object ToolboxController {
                 result.success("ok")
             }
             "vaultList" -> result.success(listPayload(activity))
+            "vaultAppLabels" -> result.success(vaultAppLabels(activity, call.argument<List<*>>("pkgs")))
             "vaultUpsert" -> result.success(mutate(activity) { VaultStore.upsert(activity, call.arguments as? Map<*, *> ?: emptyMap<String, Any>()) })
             "vaultDelete" -> result.success(mutate(activity) { VaultStore.delete(activity, call.argument<String>("id") ?: "") })
             "vaultFill" -> result.success(fillEntry(activity, call.argument<String>("id") ?: ""))
@@ -293,6 +295,44 @@ object ToolboxController {
             else -> return false
         }
         return true
+    }
+
+    /**
+     * 只读应用名。找不到包和其他失败都交给 kindFromLookup，结果只有 named 或 unavailable。
+     * 不记录查询词；这个方法也收不到查询词。
+     */
+    private fun vaultAppLabels(ctx: Context, pkgs: List<*>?): Map<String, Any> {
+        val labels = linkedMapOf<String, Map<String, String>>()
+        if (pkgs != null) {
+            for (raw in pkgs) {
+                val pkg = raw?.toString()?.trim().orEmpty()
+                if (pkg.isEmpty() || labels.containsKey(pkg)) continue
+                labels[pkg] = appLabelState(ctx, pkg)
+            }
+        }
+        return mapOf("labels" to labels)
+    }
+
+    private fun appLabelState(ctx: Context, pkg: String): Map<String, String> {
+        val kind: VaultAppHeading.Kind
+        val label: String
+        try {
+            val info = ctx.packageManager.getApplicationInfo(pkg, 0)
+            val resolved = ctx.packageManager.getApplicationLabel(info)?.toString()
+            kind = VaultAppHeading.kindFromLookup(true, resolved, false, false)
+            label = resolved?.trim().orEmpty()
+        } catch (e: PackageManager.NameNotFoundException) {
+            kind = VaultAppHeading.kindFromLookup(false, null, true, false)
+            label = ""
+        } catch (t: Throwable) {
+            kind = VaultAppHeading.kindFromLookup(false, null, false, true)
+            label = ""
+        }
+        return if (kind == VaultAppHeading.Kind.NAMED) {
+            mapOf("state" to "named", "label" to label)
+        } else {
+            mapOf("state" to "unavailable", "label" to "")
+        }
     }
 
     private fun listPayload(ctx: Context): Map<String, Any?> {
