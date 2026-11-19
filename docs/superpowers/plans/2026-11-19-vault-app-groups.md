@@ -1,6 +1,6 @@
 # 密码本按应用分段 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 悬浮密码本把全部可见账号按包名分成不可点击的段，主应用搜索补上应用名和分身自定义名，版本记为 1.3.40+12340。
 
@@ -104,25 +104,25 @@ public static List<Section> sections(List<Row> rows, String foregroundPkg)
 - Consumes: 现有 `VaultEntry`、`vaultEntryMatchesInstance`
 - Produces: 上一节的 Dart 签名
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 夹具与规格一致。前台 `com.z` 时期望段 `com.z`、`com.a`、`com.m`，`com.a` 内 `a`、`d`、`c`。前台空且布尔值全否时，段 `com.a`、`com.m`、`com.z`，`com.a` 内 `d`、`a`、`c`。空包名排最后，标题 `应用信息不可用`。五种标题全文与规格表一致，间隔点是 U+00B7。搜索：`alice`、`宿舍`、`com.tencent`、`w:com.tencent.mm#1`、`主号`、`微信`、`小号` 命中；`大号`、`p@ss-unique`、`应用信息不可用`、`未安装` 不命中。空查询保留原顺序。`clone` 为空的同包名旧记录能被 `大号` 命中、不能被 `小号` 命中。代际 1 在当前代际 2 时返回 null；代际 2 返回的 `query` 等于 `queryNow`。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `flutter test test/vault_app_group_test.dart`
 Expected: 编译失败，函数未定义。
 
-- [ ] **Step 3: 实现纯函数**
+- [x] **Step 3: 实现纯函数**
 
 `groupVaultByPackage` 用 `LinkedHashMap` 按输入顺序收集，不丢行。段排序键：空包名 2，等于非空前台包名 0，其余 1；同档 `compareTo`。段内当前分身 0 否则 1，再 `label.compareTo`，再 `id.compareTo`。`filterVaultEntries` 在原五个字段之后检查三个可选表，函数体不出现 `.password`。`acceptVaultLabelResponse` 只在代际相等时返回，查询词用 `queryNow`。
 
-- [ ] **Step 4: 测试通过，并跑现有密码本测试**
+- [x] **Step 4: 测试通过，并跑现有密码本测试**
 
 Run: `flutter test test/vault_app_group_test.dart test/vault_test.dart test/multi_instance_test.dart`
 Expected: 全部通过。现有「按分身分组」测试仍在。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 `test: 锁定密码本按包名分段和搜索名称`
 
@@ -136,10 +136,10 @@ Expected: 全部通过。现有「按分身分组」测试仍在。
 - Consumes: 无
 - Produces: `heading`、`kindFromLookup`、`sections`、`Row`、`Section`
 
-- [ ] **Step 1: 写 `main` 测试，断言与 Task 1 同一夹具**
-- [ ] **Step 2: `javac` 失败，因为类不存在**
-- [ ] **Step 3: 实现 Java。不 import `android.*`。`heading` 里「未安装」只出现在 `RELIABLY_UNINSTALLED` 分支**
-- [ ] **Step 4: 编译并运行 `main`，打印 `VaultAppHeadingTest ok`**
+- [x] **Step 1: 写 `main` 测试，断言与 Task 1 同一夹具**
+- [x] **Step 2: `javac` 失败，因为类不存在**
+- [x] **Step 3: 实现 Java。不 import `android.*`。`heading` 里「未安装」只出现在 `RELIABLY_UNINSTALLED` 分支**
+- [x] **Step 4: 编译并运行 `main`，打印 `VaultAppHeadingTest ok`**
 
 ```bash
 javac -encoding UTF-8 -d /tmp/vault-heading \
@@ -148,7 +148,7 @@ javac -encoding UTF-8 -d /tmp/vault-heading \
 java -cp /tmp/vault-heading com.parallelspace.parallel_space.VaultAppHeadingTest
 ```
 
-- [ ] **Step 5: Commit** `test: 用 Java main 锁定悬浮分段顺序`
+- [x] **Step 5: Commit** `test: 用 Java main 锁定悬浮分段顺序`
 
 ### Task 3: 只读应用名通道
 
@@ -161,10 +161,10 @@ java -cp /tmp/vault-heading com.parallelspace.parallel_space.VaultAppHeadingTest
 - Consumes: `VaultAppHeading.kindFromLookup`、`PackageManager.getApplicationInfo`、`getApplicationLabel`
 - Produces: `NativeBridge.vaultAppLabels(List<String>) → Future<Map<String, String>>`，只收录 `state == named` 且名称非空的项
 
-- [ ] **Step 1: Kotlin 方法 `vaultAppLabels` 放在 `ToolboxController`，`handle` 增加同名分支。`pkgs` 用 `call.argument<List<*>>`。每个包名 `try` 公开的 `getApplicationInfo(pkg, 0)` 与 `getApplicationLabel`。`catch (e: PackageManager.NameNotFoundException)` 与 `catch (t: Throwable)` 都交给 `kindFromLookup`，不写 `ToolboxCrashLog`，不记录查询词。不引用 `isHarmony` 或任何 private 成员**
-- [ ] **Step 2: Dart 解析出参。`PlatformException` 已由 `_call` 变成 null。本方法把 null 收成空 Map，不把异常文本拼进返回值**
-- [ ] **Step 3: FakeNative 返回 `{'labels': {}}`**
-- [ ] **Step 4: Commit** `feat: 只读解析应用显示名`
+- [x] **Step 1: Kotlin 方法 `vaultAppLabels` 放在 `ToolboxController`，`handle` 增加同名分支。`pkgs` 用 `call.argument<List<*>>`。每个包名 `try` 公开的 `getApplicationInfo(pkg, 0)` 与 `getApplicationLabel`。`catch (e: PackageManager.NameNotFoundException)` 与 `catch (t: Throwable)` 都交给 `kindFromLookup`，不写 `ToolboxCrashLog`，不记录查询词。不引用 `isHarmony` 或任何 private 成员**
+- [x] **Step 2: Dart 解析出参。`PlatformException` 已由 `_call` 变成 null。本方法把 null 收成空 Map，不把异常文本拼进返回值**
+- [x] **Step 3: FakeNative 返回 `{'labels': {}}`**
+- [x] **Step 4: Commit** `feat: 只读解析应用显示名`
 
 通道实现没有单独的 Dart 失败测试能覆盖 Kotlin。源码守卫在 Task 6 锁住「不写未安装、不写日志」。云端不把这一步说成 Kotlin 已编译。
 
@@ -177,11 +177,11 @@ java -cp /tmp/vault-heading com.parallelspace.parallel_space.VaultAppHeadingTest
 - Consumes: `filterVaultEntries`、`acceptVaultLabelResponse`、`NativeBridge.vaultAppLabels`、`CloneStore`
 - Produces: 页面内 `_labelGen`、`_asyncLabels`、`_labelKey`
 
-- [ ] **Step 1: `_reload` 成功后，若非空包名集合变化，则 `++_labelGen` 并请求通道。返回时若 `!mounted` 或代际不等，直接 return。否则 `acceptVaultLabelResponse(..., queryNow: _query)`，只把 `names` 放进 `_asyncLabels`。键入只改 `_query`**
-- [ ] **Step 2: `build` 仍调用 `groupVaultEntries`。`filterVaultEntries` 额外传入：同包名 `appName` 列表、`_asyncLabels`、`uid → customName`**
-- [ ] **Step 3: 搜索提示改为 `搜索备注名、账号、应用或分身…`。不把查询词写入 `debugPrint`、`print` 或 SharedPreferences。通道失败时不改 `_error`**
-- [ ] **Step 4: 跑 `flutter test test/vault_test.dart test/vault_app_group_test.dart`**
-- [ ] **Step 5: Commit** `feat: 主应用密码本搜索应用名和分身名`
+- [x] **Step 1: `_reload` 成功后，若非空包名集合变化，则 `++_labelGen` 并请求通道。返回时若 `!mounted` 或代际不等，直接 return。否则 `acceptVaultLabelResponse(..., queryNow: _query)`，只把 `names` 放进 `_asyncLabels`。键入只改 `_query`**
+- [x] **Step 2: `build` 仍调用 `groupVaultEntries`。`filterVaultEntries` 额外传入：同包名 `appName` 列表、`_asyncLabels`、`uid → customName`**
+- [x] **Step 3: 搜索提示改为 `搜索备注名、账号、应用或分身…`。不把查询词写入 `debugPrint`、`print` 或 SharedPreferences。通道失败时不改 `_error`**
+- [x] **Step 4: 跑 `flutter test test/vault_test.dart test/vault_app_group_test.dart`**
+- [x] **Step 5: Commit** `feat: 主应用密码本搜索应用名和分身名`
 
 ### Task 5: 悬浮列表分段
 
@@ -192,32 +192,32 @@ java -cp /tmp/vault-heading com.parallelspace.parallel_space.VaultAppHeadingTest
 - Consumes: `VaultAppHeading.sections`、`heading`、`kindFromLookup`、现有 `matchesInstance`、`remarkRow`、`section`、`emptyVault`
 - Produces: `headingMemo`、`resolveSectionHeading`
 
-- [ ] **Step 1: 替换 `当前分身` / `其他分身` / `全部账号` 这三段循环。用 `VaultAppHeading.Row(e.id, e.pkg, e.label, matchesInstance(e))` 调用 `sections(rows, pkg)`。每段一个 `section(标题)`，`tag = section.pkg`，不设置点击和 `setFocusable(true)`。段内按返回顺序 `remarkRow`**
-- [ ] **Step 2: 备忘未命中时标题用 `PENDING`。空包名直接写入 `UNAVAILABLE` 的全文，不发起查找。其他包名在后台查找，完成后写 `headingMemo` 并 `card?.findViewWithTag<TextView>(pkg)?.text = text`。这条路径不调用 `requestRebuild`**
-- [ ] **Step 3: 上方说明句、`emptyVault`、`buildVaultDetail`、`entryRow` 保持原文**
-- [ ] **Step 4: Commit** `feat: 悬浮密码本按应用分段`
+- [x] **Step 1: 替换 `当前分身` / `其他分身` / `全部账号` 这三段循环。用 `VaultAppHeading.Row(e.id, e.pkg, e.label, matchesInstance(e))` 调用 `sections(rows, pkg)`。每段一个 `section(标题)`，`tag = section.pkg`，不设置点击和 `setFocusable(true)`。段内按返回顺序 `remarkRow`**
+- [x] **Step 2: 备忘未命中时标题用 `PENDING`。空包名直接写入 `UNAVAILABLE` 的全文，不发起查找。其他包名在后台查找，完成后写 `headingMemo` 并 `card?.findViewWithTag<TextView>(pkg)?.text = text`。这条路径不调用 `requestRebuild`**
+- [x] **Step 3: 上方说明句、`emptyVault`、`buildVaultDetail`、`entryRow` 保持原文**
+- [x] **Step 4: Commit** `feat: 悬浮密码本按应用分段`
 
 ### Task 6: 源码守卫
 
 **Files:**
 - Test: `test/vault_source_guard_test.dart`
 
-- [ ] **Step 1: 写测试，读仓库文件**
+- [x] **Step 1: 写测试，读仓库文件**
 
 `ToolboxOverlayService.kt` 含 `FLAG_NOT_FOCUSABLE`、`VaultAppHeading.sections`、`matchesInstance` 的两段现有表达式，且 `requestRebuild("label_memo")` 只出现一次。该文件不含 `EditText`、`SearchView`、`未安装`、`reliablyUninstalled`、`VaultStore.persist`、`VaultStore.upsert`。`android/app/src/main/kotlin` 不含 `未安装` 与 `reliablyUninstalled`。`VaultAppHeading.java` 的「未安装」只在 `RELIABLY_UNINSTALLED` 分支。`filterVaultEntries` 函数体不含 `.password` 与 `['pass']`。`clone_detail_screen.dart` 仍是 `openVaultScreen(context, initialPackage: c.packageName, openEditor: true)`。`VaultStore.kt` 的 SHA-256 等于实现开始时的值。`BackupCodec.settingKeys` 仍正好是 `title theme dyn seed fx updAuto toolbox`。
 
-- [ ] **Step 2: `flutter test test/vault_source_guard_test.dart` 通过**
-- [ ] **Step 3: Commit** `test: 守卫悬浮窗无输入且密码本不写回`
+- [x] **Step 2: `flutter test test/vault_source_guard_test.dart` 通过**
+- [x] **Step 3: Commit** `test: 守卫悬浮窗无输入且密码本不写回`
 
 ### Task 7: 1.3.40 文档
 
 **Files:**
 - Modify: `test/vault_test.dart`、`lib/config/app_version.dart`、`pubspec.yaml`、`README.md`、`CHANGELOG.md`
 
-- [ ] **Step 1: 先把版本测试改成 1.3.40 / 12340，并断言大于 12339。跑测试，确认红在旧常量**
-- [ ] **Step 2: 同步四处版本。README 徽章、当前版本句、下一次版本句。历史句「1.3.39 起机型适配」保留。CHANGELOG 顶部改当前版本，新增 1.3.40 条目：悬浮按应用分段、主应用搜索补名称、不写密码本、不改 `update_manifest`、云端未编译 Kotlin、HyperOS 未验证、打包机尚未出 APK**
-- [ ] **Step 3: `flutter test` 全量。记录通过数量**
-- [ ] **Step 4: Commit** `chore: 版本 1.3.40+12340`
+- [x] **Step 1: 先把版本测试改成 1.3.40 / 12340，并断言大于 12339。跑测试，确认红在旧常量**
+- [x] **Step 2: 同步四处版本。README 徽章、当前版本句、下一次版本句。历史句「1.3.39 起机型适配」保留。CHANGELOG 顶部改当前版本，新增 1.3.40 条目：悬浮按应用分段、主应用搜索补名称、不写密码本、不改 `update_manifest`、云端未编译 Kotlin、HyperOS 未验证、打包机尚未出 APK**
+- [x] **Step 3: `flutter test` 全量。记录通过数量**
+- [x] **Step 4: Commit** `chore: 版本 1.3.40+12340`
 
 ## 规格对照
 

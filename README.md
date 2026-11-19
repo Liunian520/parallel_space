@@ -2,7 +2,7 @@
 
 > 中文名：**平行空间** · 应用分身 / 双开
 
-[![version](https://img.shields.io/badge/version-1.3.39-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.40-2F7CF6)](https://github.com/Liunian520/parallel_space/blob/main/CHANGELOG.md)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -22,7 +22,7 @@ Alter Ego 用进程内虚拟引擎（NewBlackbox / Bcore）创建和启动分身
 | 📌 | 桌面快捷方式 | 固定到桌面后直接启动虚拟分身 |
 | 📍 | 虚拟定位 | 系统级模拟位置，前台服务持续推送，对整机生效 |
 | 🧰 | 工具箱 | 分身在前台时出现可拖动、可收起的悬浮小窗；账号行内复制、底部一键填入 |
-| 🔑 | 密码本 | 在 App 内添加/管理账号；分身工具箱只读，可一键填入或复制；本机明文存储，不设生物识别门禁 |
+| 🔑 | 密码本 | 在 App 内添加、搜索和管理账号；悬浮工具箱只读，按应用分段列出全部账号，可一键填入或复制。本机明文存储，不设生物识别门禁 |
 | 💾 | 分身数据备份 | 设置里可导出某个或全部分身的应用数据、登录状态和独立设备标识（`.aebak`），换机或重装后可覆盖或新建恢复；覆盖时会先清空目标数据目录；密码本和 PIN 不包含在内 |
 | 🔐 | 登录隔离 | 每个分身可选单独的 Android ID，默认关闭。打开或更换后可能要重新登录，不能绕过应用服务器的账号限制 |
 | 🔔 | 通知隔离 | 分身通知的 tag、id、渠道互相分开，取消不会误伤其他分身或 Alter Ego 自己的通知；状态栏显示分身名称。不是统一通知列表 |
@@ -68,7 +68,7 @@ flutter test
 flutter build apk --release --target-platform android-arm64
 ```
 
-产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.39+12339**。这一版还没有在打包机上编出 APK。
+产物在 `build/app/outputs/flutter-apk/app-release.apk` 或 `app-arm64-v8a-release.apk`（`--split-per-abi`）。版本来自 `pubspec.yaml`，当前是 **1.3.40+12340**。这一版还没有在打包机上编出 APK。
 
 **签名**：release 使用本机 `~/.android/debug.keystore`（与历史安装包同一证书，SHA-256 以 `5F:63:37:…` 开头）。覆盖安装必须保持同一证书；换证书会导致「必须先卸载」。`android/app/build.gradle.kts` 里 `signingConfig = signingConfigs.getByName("debug")`。
 
@@ -76,7 +76,7 @@ flutter build apk --release --target-platform android-arm64
 
 ## 版本号
 
-只把修订号加 1：当前 `1.3.39`（versionCode `12339`），下一次是 `1.3.40`（`12340`）。
+只把修订号加 1：当前 `1.3.40`（versionCode `12340`），下一次是 `1.3.41`（`12341`）。
 
 1.3.x 的 `versionCode = 12300 + 修订号`（例如 1.3.1→12301、1.3.15→12315）。这样始终高于早期误用的 `10303–10305`，也高于已装的 `12301/12302`，覆盖安装不会因 versionCode 下降而失败。应用内更新按 **versionCode 数值大小** 比较。
 
