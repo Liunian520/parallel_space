@@ -57,6 +57,26 @@ public final class VaultAppHeading {
         return Kind.NAMED;
     }
 
+    /**
+     * 通道只发布成对的状态和名称。只有 NAMED 且名称非空才是 named；
+     * PENDING、UNAVAILABLE 和可靠卸载都不把名称发出去。
+     */
+    public static ChannelLabel channelLabel(Kind kind, String label) {
+        String name = label == null ? "" : label.trim();
+        if (kind == Kind.NAMED && !name.isEmpty()) return new ChannelLabel("named", name);
+        return new ChannelLabel("unavailable", "");
+    }
+
+    public static final class ChannelLabel {
+        public final String state;
+        public final String label;
+
+        public ChannelLabel(String state, String label) {
+            this.state = state;
+            this.label = label;
+        }
+    }
+
     public static List<Section> sections(List<Row> rows, String foregroundPkg) {
         String fg = foregroundPkg == null ? "" : foregroundPkg;
         Map<String, List<Row>> map = new LinkedHashMap<>();

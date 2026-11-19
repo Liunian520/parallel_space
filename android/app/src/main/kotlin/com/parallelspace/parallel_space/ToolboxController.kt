@@ -314,26 +314,20 @@ object ToolboxController {
     }
 
     private fun appLabelState(ctx: Context, pkg: String): Map<String, String> {
-        val kind: VaultAppHeading.Kind
-        val label: String
-        try {
+        val lookup = try {
             val info = ctx.packageManager.getApplicationInfo(pkg, 0)
-            val resolved = ctx.packageManager.getApplicationLabel(info)?.toString()
-            kind = VaultAppHeading.kindFromLookup(true, resolved, false, false)
-            label = resolved?.trim().orEmpty()
+            val resolved = ctx.packageManager.getApplicationLabel(info)?.toString()?.trim().orEmpty()
+            AppLabelLookup(VaultAppHeading.kindFromLookup(true, resolved, false, false), resolved)
         } catch (e: PackageManager.NameNotFoundException) {
-            kind = VaultAppHeading.kindFromLookup(false, null, true, false)
-            label = ""
+            AppLabelLookup(VaultAppHeading.kindFromLookup(false, null, true, false), "")
         } catch (t: Throwable) {
-            kind = VaultAppHeading.kindFromLookup(false, null, false, true)
-            label = ""
+            AppLabelLookup(VaultAppHeading.kindFromLookup(false, null, false, true), "")
         }
-        return if (kind == VaultAppHeading.Kind.NAMED) {
-            mapOf("state" to "named", "label" to label)
-        } else {
-            mapOf("state" to "unavailable", "label" to "")
-        }
+        val published = VaultAppHeading.channelLabel(lookup.kind, lookup.label)
+        return mapOf("state" to published.state, "label" to published.label)
     }
+
+    private class AppLabelLookup(val kind: VaultAppHeading.Kind, val label: String)
 
     private fun listPayload(ctx: Context): Map<String, Any?> {
         return try {

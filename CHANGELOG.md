@@ -15,7 +15,7 @@
 
 ### 其他
 
-- 版本 `1.3.40+12340`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14340。这一版还没有在打包机上编译，也没有上传，也没有改 `update_manifest`。HyperOS 上的悬浮窗和输入法没有真机验收。云端没有 Android SDK，不能把 Kotlin 说成已经编译通过。
+- 版本 `1.3.40+12340`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14340。这一版还没有在打包机上编译，也没有上传，也没有改 `update_manifest`。HyperOS 上的悬浮窗和输入法没有真机验收。云端没有 Android SDK，不能把 Kotlin 说成已经编译通过。第一次提交里的应用名读取在 `try/catch` 中对 `val` 重复赋值，打包机 `compileReleaseKotlin` 失败；已改成每个分支返回完整结果。云端仍不能编译 Kotlin。
 
 ## [1.3.39] - 2026-11-19
 

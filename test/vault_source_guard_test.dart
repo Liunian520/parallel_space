@@ -86,6 +86,24 @@ void main() {
     );
   });
 
+  test('应用名读取一次返回完整结果，不在 catch 里重写 val', () {
+    final controller = File(
+      'android/app/src/main/kotlin/com/parallelspace/parallel_space/ToolboxController.kt',
+    ).readAsStringSync();
+    final start = controller.indexOf('private fun appLabelState');
+    final end = controller.indexOf('private class AppLabelLookup');
+    expect(start, greaterThan(0));
+    expect(end, greaterThan(start));
+    final body = controller.substring(start, end);
+    expect(RegExp(r'^\s*(kind|label)\s*=', multiLine: true).hasMatch(body), isFalse);
+    expect(body.contains('NameNotFoundException'), isTrue);
+    expect(body.contains('kindFromLookup(false, null, true, false)'), isTrue);
+    expect(body.contains('kindFromLookup(false, null, false, true)'), isTrue);
+    expect(body.contains('channelLabel'), isTrue);
+    expect(body.contains('ToolboxCrashLog'), isFalse);
+    expect(body.contains('print('), isFalse);
+  });
+
   test('配置备份白名单不含搜索词', () {
     expect(
       BackupCodec.settingKeys,

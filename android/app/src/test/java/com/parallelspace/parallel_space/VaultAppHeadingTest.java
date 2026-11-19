@@ -40,6 +40,14 @@ public final class VaultAppHeadingTest {
         check(VaultAppHeading.kindFromLookup(true, "微信", false, false) == VaultAppHeading.Kind.NAMED, "found name");
         check(VaultAppHeading.kindFromLookup(true, "微信", true, true) == VaultAppHeading.Kind.UNAVAILABLE, "failure wins");
 
+        checkChannel(VaultAppHeading.Kind.NAMED, "微信", "named", "微信");
+        checkChannel(VaultAppHeading.Kind.NAMED, "  微信  ", "named", "微信");
+        checkChannel(VaultAppHeading.Kind.NAMED, "  ", "unavailable", "");
+        checkChannel(VaultAppHeading.Kind.NAMED, null, "unavailable", "");
+        checkChannel(VaultAppHeading.Kind.UNAVAILABLE, "残留", "unavailable", "");
+        checkChannel(VaultAppHeading.Kind.PENDING, "微信", "unavailable", "");
+        checkChannel(VaultAppHeading.Kind.RELIABLY_UNINSTALLED, "微信", "unavailable", "");
+
         System.out.println("VaultAppHeadingTest ok");
     }
 
@@ -69,6 +77,11 @@ public final class VaultAppHeadingTest {
         int n = 0;
         for (VaultAppHeading.Section section : sections) n += section.rows.size();
         return n;
+    }
+
+    private static void checkChannel(VaultAppHeading.Kind kind, String label, String state, String text) {
+        VaultAppHeading.ChannelLabel published = VaultAppHeading.channelLabel(kind, label);
+        check(state.equals(published.state) && text.equals(published.label), "channel " + kind + " -> " + state);
     }
 
     private static void check(boolean value, String message) {
