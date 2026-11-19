@@ -93,19 +93,132 @@ bool vaultEntryMatchesInstance(VaultEntry e, String uid) {
   return first && e.packageName == pkg;
 }
 
-/// 按关键字过滤（备注名 / 账号 / 包名 / 备注 / 分身 uid）。
-List<VaultEntry> filterVaultEntries(List<VaultEntry> entries, String query) {
+enum VaultAppKind { pending, named, unavailable, reliablyUninstalled }
+
+const _headingDot = '\u00B7';
+
+/// 悬浮分段标题。生产界面只使用前三种；`reliablyUninstalled` 仅供测试锁住「未安装」的唯一入口。
+String vaultAppHeading(String pkg, VaultAppKind kind, [String label = '']) {
+  final name = label.trim();
+  if (kind == VaultAppKind.reliablyUninstalled) {
+    return pkg.isEmpty ? '未安装' : '$pkg $_headingDot 未安装';
+  }
+  if (kind == VaultAppKind.named && name.isNotEmpty) return name;
+  if (kind == VaultAppKind.pending) return pkg.isEmpty ? '应用信息不可用' : pkg;
+  return pkg.isEmpty ? '应用信息不可用' : '$pkg $_headingDot 应用信息不可用';
+}
+
+class VaultAppRow {
+  const VaultAppRow({
+    required this.id,
+    required this.pkg,
+    required this.label,
+    required this.currentClone,
+  });
+
+  final String id;
+  final String pkg;
+  final String label;
+  final bool currentClone;
+}
+
+class VaultAppSection {
+  const VaultAppSection({required this.pkg, required this.rows});
+
+  final String pkg;
+  final List<VaultAppRow> rows;
+}
+
+/// 按包名分段。不删除输入。空包名排在所有非空包名之后。
+List<VaultAppSection> groupVaultByPackage(List<VaultAppRow> rows, String foregroundPkg) {
+  final map = <String, List<VaultAppRow>>{};
+  for (final row in rows) {
+    map.putIfAbsent(row.pkg, () => []).add(row);
+  }
+  final keys = map.keys.toList()
+    ..sort((a, b) {
+      final ar = _pkgRank(a, foregroundPkg);
+      final br = _pkgRank(b, foregroundPkg);
+      if (ar != br) return ar - br;
+      return a.compareTo(b);
+    });
+  return [
+    for (final key in keys)
+      VaultAppSection(
+        pkg: key,
+        rows: [...map[key]!]..sort((a, b) {
+            final ar = a.currentClone ? 0 : 1;
+            final br = b.currentClone ? 0 : 1;
+            if (ar != br) return ar - br;
+            final byLabel = a.label.compareTo(b.label);
+            if (byLabel != 0) return byLabel;
+            return a.id.compareTo(b.id);
+          }),
+      ),
+  ];
+}
+
+int _pkgRank(String pkg, String foregroundPkg) {
+  if (pkg.isEmpty) return 2;
+  if (foregroundPkg.isNotEmpty && pkg == foregroundPkg) return 0;
+  return 1;
+}
+
+class VaultLabelApply {
+  const VaultLabelApply({required this.names, required this.query});
+
+  final Map<String, String> names;
+  final String query;
+}
+
+/// 只有当前代际能替换应用名表。查询词用应用时刻的值，不用发起时刻的值。
+VaultLabelApply? acceptVaultLabelResponse({
+  required int responseGen,
+  required int currentGen,
+  required Map<String, String> names,
+  required String queryNow,
+}) {
+  if (responseGen != currentGen) return null;
+  return VaultLabelApply(names: names, query: queryNow);
+}
+
+/// 按关键字过滤（备注名 / 账号 / 包名 / 备注 / 分身 uid / 应用名 / 所属分身自定义名）。
+List<VaultEntry> filterVaultEntries(
+  List<VaultEntry> entries,
+  String query, {
+  Map<String, List<String>> syncAppNames = const {},
+  Map<String, String> asyncAppLabels = const {},
+  Map<String, String> cloneNames = const {},
+}) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return entries;
   return [
     for (final e in entries)
-      if (e.label.toLowerCase().contains(q) ||
-          e.username.toLowerCase().contains(q) ||
-          e.packageName.toLowerCase().contains(q) ||
-          e.note.toLowerCase().contains(q) ||
-          e.cloneUid.toLowerCase().contains(q))
-        e,
+      if (_entryMatchesQuery(e, q, syncAppNames, asyncAppLabels, cloneNames)) e,
   ];
+}
+
+bool _entryMatchesQuery(
+  VaultEntry e,
+  String q,
+  Map<String, List<String>> syncAppNames,
+  Map<String, String> asyncAppLabels,
+  Map<String, String> cloneNames,
+) {
+  bool has(String value) => value.toLowerCase().contains(q);
+  if (has(e.label) || has(e.username) || has(e.packageName) || has(e.note) || has(e.cloneUid)) {
+    return true;
+  }
+  for (final name in syncAppNames[e.packageName] ?? const <String>[]) {
+    if (name.isNotEmpty && has(name)) return true;
+  }
+  final asyncName = asyncAppLabels[e.packageName];
+  if (asyncName != null && asyncName.isNotEmpty && has(asyncName)) return true;
+  for (final uid in cloneNames.keys) {
+    final name = cloneNames[uid] ?? '';
+    if (name.isNotEmpty && vaultEntryMatchesInstance(e, uid) && has(name)) return true;
+  }
+  return false;
 }
 
 /// 合并多源条目：同 id 时后者覆盖前者。对应原生 VaultStore.mergeById。
