@@ -86,7 +86,7 @@ class SettingsScreen extends StatelessWidget {
             GlassTile(
               icon: Icons.phonelink_setup_rounded,
               title: '机型适配检查',
-              subtitle: '悬浮窗、无障碍、电池、快捷方式和系统版本',
+              subtitle: '能读到的权限、要自己确认的项，以及分身相机',
               onTap: () => _push(context, const CompatScreen()),
             ),
             GlassTile(

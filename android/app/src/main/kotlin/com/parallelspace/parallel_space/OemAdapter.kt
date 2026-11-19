@@ -311,72 +311,13 @@ object OemAdapter {
         "autostart" -> autoStartChainLabels(fam)
         "shortcut" -> shortcutChainLabels(fam)
         "notification" -> listOf("ACTION_APP_NOTIFICATION_SETTINGS", "APPLICATION_DETAILS", "SETTINGS")
-        "battery" -> listOf(
-            "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-            "ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS",
-            "APPLICATION_DETAILS",
-            "SETTINGS",
-        )
+        "battery" -> PermissionTargets.batteryWhitelistLabels()
+        "oem-battery" -> PermissionTargets.oemBatteryLabels()
         "popup" -> listOf("oem:SingleAppOrBgPopup", "APPLICATION_DETAILS", "SETTINGS")
         else -> listOf("APPLICATION_DETAILS", "SETTINGS")
     }
 
-    fun overlayChainLabels(fam: Family = family): List<String> {
-        val oem = when (fam) {
-            Family.XIAOMI -> listOf(
-                "miui:PermissionsEditorActivity",
-                "miui:AppPermissionsEditorActivity",
-                "miui.intent.action.APP_PERM_EDITOR",
-                "miui:AddViewWindowActivity",
-            )
-            Family.HUAWEI -> listOf(
-                "huawei:AddViewMonitorActivity",
-                "huawei:NotificationManagerActivity",
-                "huawei:SingleAppActivity",
-                "huawei:MainActivity(permission)",
-            )
-            Family.HONOR -> listOf(
-                "honor:AddViewMonitorActivity",
-                "honor:SingleAppActivity",
-                "honor:MainActivity(permission)",
-                "huawei:AddViewMonitorActivity",
-                "huawei:SingleAppActivity",
-            )
-            Family.OPPO -> listOf(
-                "coloros:FloatWindowListActivity",
-                "oplus:FloatWindowListActivity",
-                "coloros:sysfloatwindow.FloatWindowListActivity",
-                "oppo.safe:FloatWindowListActivity",
-                "oplus:PermissionTopActivity",
-                "coloros:PermissionManagerActivity",
-                "oneplus:ChainLaunchAppListActivity",
-            )
-            Family.VIVO -> listOf(
-                "vivo:SoftPermissionDetailActivity",
-                "iqoo:FloatWindowManager",
-                "vivo:PurviewTabActivity",
-                "iqoo:SoftPermissionDetailActivity",
-            )
-            Family.SAMSUNG -> listOf(
-                "ACTION_MANAGE_OVERLAY_PERMISSION:package",
-                "samsung.sm_cn:BatteryActivity",
-                "samsung:SmartManagerDashBoardActivity",
-                "samsung.lool:BatteryActivity",
-            )
-            Family.MEIZU -> listOf(
-                "meizu:AppSecurityActivity",
-                "meizu:PermissionActivity",
-                "meizu:SmartBGActivity",
-            )
-            Family.STOCK -> emptyList()
-        }
-        return oem + listOf(
-            "ACTION_MANAGE_OVERLAY_PERMISSION:package",
-            "ACTION_MANAGE_OVERLAY_PERMISSION",
-            "APPLICATION_DETAILS",
-            "SETTINGS",
-        )
-    }
+    fun overlayChainLabels(fam: Family = family): List<String> = PermissionTargets.overlayLabels(fam.name)
 
     fun accessibilityChainLabels(fam: Family = family): List<String> {
         val oem = when (fam) {
@@ -574,6 +515,23 @@ object OemAdapter {
         }
     }
 
+    /** 状态页白名单按钮：只打开电池优化列表，不弹出系统授权窗。 */
+    fun openBatteryWhitelist(act: Activity): OpenResult = launchFirstDetailed(
+        act,
+        listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)),
+        "battery",
+    )
+
+    /** 状态页厂商省电按钮：先厂商页，再系统电池优化列表。不请求授权。 */
+    fun openOemBattery(act: Activity): OpenResult {
+        if (family == Family.STOCK) return OpenResult("none")
+        return launchFirstDetailed(
+            act,
+            batteryOemIntents(act) + Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            "battery",
+        )
+    }
+
     /** 机型适配页顶部提示：按品牌列出建议打开的权限。 */
     fun brandTip(): String = when (family) {
         Family.XIAOMI -> "HyperOS / MIUI：请依次打开悬浮窗、无障碍、自启动、后台弹出界面，并把电池策略设为「无限制」。"
@@ -740,17 +698,16 @@ object OemAdapter {
                 }
             }
             "notification" -> launchFirstDetailed(act, notificationIntents(act), "notification")
-            "battery" -> run {
-                // 华为 / 荣耀先试厂商耗电页，再走系统「忽略电池优化」
-                val oem = batteryOemIntents(act)
-                if (oem.isNotEmpty()) {
-                    val code = launchFirst(act, oem)
-                    if (code != "error") return@run OpenResult(code)
+            "battery", "battery-whitelist" -> openBatteryWhitelist(act)
+            "oem-battery" -> openOemBattery(act)
+            "autostart" -> {
+                val opened = launchFirstDetailed(act, autoStartIntents(act), "autostart")
+                if (family == Family.SAMSUNG && opened.code == "rom") {
+                    OpenResult("rom", "已打开电池相关设置。请自己确认，打开不等于已允许。")
+                } else {
+                    opened
                 }
-                val c = requestIgnoreBattery(act)
-                if (c == "error") OpenResult("error", manualHint("battery")) else OpenResult(c)
             }
-            "autostart" -> launchFirstDetailed(act, autoStartIntents(act), "autostart")
             "popup" -> launchFirstDetailed(act, popupIntents(act), "popup")
             "shortcut" -> launchFirstDetailed(
                 act,
@@ -760,8 +717,8 @@ object OemAdapter {
             "lock" -> launchFirstDetailed(act, listOf(Intent(Settings.ACTION_SECURITY_SETTINGS)), "lock")
             else -> OpenResult("none")
         }
-        // Flutter 侧用字符串；错误时用 "error|<hint>" 传手动路径
-        return if (r.code == "error" && r.hint.isNotBlank()) "error|${r.hint}" else r.code
+        // Flutter 侧用 "code|说明"。说明可以是手动路径，也可以是打开了哪一页。
+        return if (r.hint.isNotBlank()) "${r.code}|${r.hint}" else r.code
     }
 
     private fun overlayCheck(ctx: Context): Check {
@@ -982,78 +939,22 @@ object OemAdapter {
 
     fun overlayIntents(ctx: Context): List<Intent> {
         val p = ctx.packageName
+        val oem = PermissionTargets.overlayOem(family.name).map { targetIntent(ctx, it) }
         val standardPkg = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$p".toUri())
         val standardBare = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
-        val oem = when (family) {
-            Family.XIAOMI -> listOf(
-                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
-                    .putExtra("extra_pkgname", p),
-                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity")
-                    .putExtra("extra_pkgname", p),
-                Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
-                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
-                    .setAction("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", p),
-                // 部分 HyperOS 还有悬浮窗专用页
-                cn("com.miui.securitycenter", "com.miui.permcenter.permissions.AddViewWindowActivity")
-                    .putExtra("extra_pkgname", p),
-            )
-            Family.HUAWEI -> listOf(
-                // HarmonyOS 2–4 / EMUI：悬浮窗列表
-                cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
-                cn("com.huawei.systemmanager", "com.huawei.notificationmanager.ui.NotificationManagmentActivity"),
-                // 单应用权限页（含悬浮窗 / 后台弹出）
-                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
-                    .putExtra("packageName", p),
-                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity"),
-                Intent().setClassName("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
-                    .putExtra("package_name", p),
-            )
-            Family.HONOR -> listOf(
-                cn("com.hihonor.systemmanager", "com.hihonor.systemmanager.addviewmonitor.AddViewMonitorActivity"),
-                cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.SingleAppActivity")
-                    .putExtra("packageName", p),
-                cn("com.hihonor.systemmanager", "com.hihonor.permissionmanager.ui.MainActivity"),
-                // 部分荣耀仍残留华为管家包名
-                cn("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity"),
-                cn("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.SingleAppActivity")
-                    .putExtra("packageName", p),
-            )
-            Family.OPPO -> listOf(
-                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.floatwindow.FloatWindowListActivity"),
-                cn("com.oplus.safecenter", "com.oplus.safecenter.sysfloatwindow.FloatWindowListActivity"),
-                cn("com.coloros.safecenter", "com.coloros.safecenter.sysfloatwindow.FloatWindowListActivity"),
-                cn("com.oppo.safe", "com.oppo.safe.permission.floatwindow.FloatWindowListActivity"),
-                // ColorOS 13+ / OxygenOS：单应用权限
-                cn("com.oplus.safecenter", "com.oplus.safecenter.permission.PermissionTopActivity"),
-                cn("com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity")
-                    .putExtra("packageName", p),
-                // 一加旧版关联启动旁的权限入口
-                cn("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"),
-            )
-            Family.VIVO -> listOf(
-                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
-                    .putExtra("packagename", p),
-                cn("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.FloatWindowManager"),
-                cn("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity"),
-                cn("com.iqoo.secure", "com.iqoo.secure.safeguard.SoftPermissionDetailActivity")
-                    .putExtra("packagename", p),
-            )
-            Family.SAMSUNG -> listOf(
-                // One UI 优先走系统悬浮窗页；再试智能管理器
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$p".toUri()),
-                cn("com.samsung.android.sm_cn", "com.samsung.android.sm.ui.battery.BatteryActivity"),
-                cn("com.samsung.android.sm", "com.samsung.android.sm.app.dashboard.SmartManagerDashBoardActivity"),
-                cn("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
-                cn("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
-            )
-            Family.MEIZU -> listOf(
-                cn("com.meizu.safe", "com.meizu.safe.security.AppSecActivity").putExtra("packageName", p),
-                cn("com.meizu.safe", "com.meizu.safe.permission.PermissionActivity"),
-                cn("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity"),
-            )
-            Family.STOCK -> emptyList()
-        }
         return oem + standardPkg + standardBare
+    }
+
+    private fun targetIntent(ctx: Context, target: PermissionTargets.Target): Intent {
+        val intent = Intent()
+        val pkg = target.pkg
+        val cls = target.cls
+        if (!pkg.isNullOrEmpty() && !cls.isNullOrEmpty()) intent.component = ComponentName(pkg, cls)
+        val action = target.action
+        if (!action.isNullOrEmpty()) intent.action = action
+        val extra = target.extraKey
+        if (!extra.isNullOrEmpty()) intent.putExtra(extra, ctx.packageName)
+        return intent
     }
 
     /**

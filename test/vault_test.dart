@@ -21,14 +21,14 @@ Future<void> settle(WidgetTester t, [int frames = 20]) async {
 }
 
 void main() {
-  test('版本号只加最后一位：1.3.38 → 12338', () {
-    expect(kAppVersionName, '1.3.38');
-    expect(kAppVersionCode, 12338);
-    expect(encodeVersionCode(1, 3, 38), kAppVersionCode);
-    expect(versionCodeFromName('1.3.38'), 12338);
-    expect(encodeVersionCode(1, 3, 38), greaterThan(12302));
-    expect(encodeVersionCode(1, 3, 38), greaterThan(10305));
-    expect(encodeVersionCode(1, 3, 38), greaterThan(12337));
+  test('版本号只加最后一位：1.3.39 → 12339', () {
+    expect(kAppVersionName, '1.3.39');
+    expect(kAppVersionCode, 12339);
+    expect(encodeVersionCode(1, 3, 39), kAppVersionCode);
+    expect(versionCodeFromName('1.3.39'), 12339);
+    expect(encodeVersionCode(1, 3, 39), greaterThan(12302));
+    expect(encodeVersionCode(1, 3, 39), greaterThan(10305));
+    expect(encodeVersionCode(1, 3, 39), greaterThan(12338));
   });
 
   test('密码本按分身分组，当前包名排在前面', () {
@@ -113,7 +113,8 @@ void main() {
     await settle(t);
     expect(find.byType(CompatScreen), findsOneWidget);
     expect(find.text('悬浮窗'), findsOneWidget);
-    expect(find.text('64 位'), findsOneWidget);
+    await t.scrollUntilVisible(find.text('分身相机诊断'), 200);
+    expect(find.text('分身相机诊断'), findsOneWidget);
     await t.tap(find.text('去设置').first);
     await settle(t);
     expect(native.methods, contains('compatOpen'));

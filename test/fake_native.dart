@@ -200,6 +200,39 @@ class FakeNative {
         return overlayGranted;
       case 'toolboxCurrentPackage':
         return currentPackage;
+      case 'permissionStatus':
+        return {
+          'brand': 'Redmi',
+          'romLabel': '小米 HyperOS 2.0',
+          'model': 'Test',
+          'sdk': 35,
+          'release': '15',
+          'abi': 'arm64-v8a',
+          'brandTip': '',
+          'harmonyNote': '',
+          'items': [
+            {
+              'id': 'overlay',
+              'group': 'detectable',
+              'title': '悬浮窗',
+              'status': overlayGranted ? 'granted' : 'denied',
+              'badge': overlayGranted ? '已允许' : '未允许',
+              'detail': '尚未允许显示悬浮窗',
+              'canOpen': true,
+              'openId': 'overlay',
+            },
+            {
+              'id': 'clone-cam',
+              'group': 'clone',
+              'title': '分身里的相机和麦克风',
+              'status': 'unknown',
+              'badge': '未知',
+              'detail': '分身相机未知',
+              'canOpen': false,
+              'openId': 'camera-diag',
+            },
+          ],
+        };
       case 'compatReport':
         return {
           'rom': rom,

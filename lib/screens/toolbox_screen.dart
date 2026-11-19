@@ -220,7 +220,7 @@ class _ToolboxScreenState extends State<ToolboxScreen> with WidgetsBindingObserv
                 GlassTile(
                   icon: Icons.phonelink_setup_rounded,
                   title: '机型适配检查',
-                  subtitle: '查看悬浮窗、无障碍、电池和快捷方式是否就绪',
+                  subtitle: '区分能读到的结果和需要自己确认的项',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CompatScreen())),
                 ),
               ]),

@@ -401,17 +401,22 @@ class NativeBridge {
 
   static Future<Map?> compatReport() => _call<Map>('compatReport');
 
-  /// 'rom' | 'details' | 'settings' | 'ok' | 'requested' | 'error' | 'error|<手动路径>' | 'none'
+  /// 能力状态页的只读报告。不走会写回无障碍的旧检查。
+  static Future<Map?> permissionStatus() => _call<Map>('permissionStatus');
+
+  /// 'rom' | 'details' | 'settings' | 'ok' | 'requested' | 'error' | 'none'，说明在 `|` 后面。
   static Future<String> compatOpen(String id) async => await _call<String>('compatOpen', {'id': id}) ?? 'error';
 
   static String compatOpenHint(String raw) {
-    if (raw.startsWith('error|')) return raw.substring(6);
-    return '';
+    final i = raw.indexOf('|');
+    if (i < 0) return '';
+    return raw.substring(i + 1);
   }
 
   static String compatOpenCode(String raw) {
-    if (raw.startsWith('error|')) return 'error';
-    return raw;
+    final i = raw.indexOf('|');
+    if (i < 0) return raw;
+    return raw.substring(0, i);
   }
 
   static Future<String> openUrl(String url) async => await _call<String>('openUrl', {'url': url}) ?? 'error';

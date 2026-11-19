@@ -55,13 +55,13 @@
 - Test: `android/app/src/test/java/com/parallelspace/parallel_space/PermissionStatusDecisionTest.java`
 - Create: `android/app/src/main/java/com/parallelspace/parallel_space/PermissionStatusDecision.java`
 
-- [ ] **Step 1: 写失败测试并运行**
+- [x] **Step 1: 写失败测试并运行**
 
 Run: `javac -d /tmp/ps-status android/app/src/test/java/com/parallelspace/parallel_space/PermissionStatusDecisionTest.java`
 
 Expected: 编译失败，找不到 `PermissionStatusDecision`。
 
-- [ ] **Step 2: 实现决策并复跑测试**
+- [x] **Step 2: 实现决策并复跑测试**
 
 覆盖：悬浮窗一致、冲突、单边 null；无障碍两行独立；通知 API 32/33、总开关异常、渠道缺失与 `blocked`；后台限制 API 27 为 `na`、API 28 的 false 文案含「不是自启动已经打开」；快捷方式小米/华为/三星/STOCK；自启动、后台弹出、厂商省电永不为 `granted`；宿主相机已允许时分身行仍为 `unknown`。
 
@@ -69,7 +69,7 @@ Run: `java -cp /tmp/ps-status:android/app/src/main/java com.parallelspace.parall
 
 Expected: `PermissionStatusDecisionTest OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ### Task 2: Intent 名单与只读采集边界
 
@@ -78,9 +78,9 @@ Expected: `PermissionStatusDecisionTest OK`
 - Create: `PermissionStatus.kt`
 - Modify: `OemAdapter.kt`、`ToolboxController.kt`
 
-- [ ] **Step 1: 测试禁止的悬浮窗组件、电池导航顺序，以及 Kotlin 源码不含 `A11yKeeper` / `requestPermissions` / `startActivity` / `canDrawOverlay`**
-- [ ] **Step 2: 先看测试失败，再改名单和 `openBatteryWhitelist` / `openOemBattery`**
-- [ ] **Step 3: 源码测试通过后提交。没有 Android SDK 就不跑 Kotlin 编译。**
+- [x] **Step 1: 测试禁止的悬浮窗组件、电池导航顺序，以及 Kotlin 源码不含 `A11yKeeper` / `requestPermissions` / `startActivity` / `canDrawOverlay`**
+- [x] **Step 2: 先看测试失败，再改名单和 `openBatteryWhitelist` / `openOemBattery`**
+- [x] **Step 3: 源码测试通过后提交。没有 Android SDK 就不跑 Kotlin 编译。**
 
 ### Task 3: Flutter 页面
 
@@ -90,15 +90,15 @@ Expected: `PermissionStatusDecisionTest OK`
 - Test: `test/permission_status_test.dart`
 - Modify: `settings_screen.dart`、`toolbox_screen.dart` 副标题
 
-- [ ] **Step 1: 测试六状态颜色、三组标题、序号、dispose、空通道、进入相机页不调用 `cameraSelfTest`、状态页源码不引用 `CloneStore` / `setToolboxEnabled` / `requestIgnoreBattery`**
-- [ ] **Step 2: 看失败后实现页面。`resumed` 才刷新，打开设置后不立刻读。**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: 测试六状态颜色、三组标题、序号、dispose、空通道、进入相机页不调用 `cameraSelfTest`、状态页源码不引用 `CloneStore` / `setToolboxEnabled` / `requestIgnoreBattery`**
+- [x] **Step 2: 看失败后实现页面。`resumed` 才刷新，打开设置后不立刻读。**
+- [x] **Step 3: Commit**
 
 ### Task 4: 1.3.39 文档
 
-- [ ] 同步 `pubspec.yaml`、`app_version.dart`、README 徽章、CHANGELOG。写明未打包、未上传、未改更新清单、真机未验证。
-- [ ] `flutter analyze` 与全量 `flutter test`。Java `main()` 再跑一遍。
-- [ ] Commit，推送到 PR 5。不 merge，不 force push。
+- [x] 同步 `pubspec.yaml`、`app_version.dart`、README 徽章、CHANGELOG。写明未打包、未上传、未改更新清单、真机未验证。
+- [x] `flutter analyze` 与全量 `flutter test`。Java `main()` 再跑一遍。
+- [x] Commit，推送到 PR 5。不 merge，不 force push。
 
 ## 规格对照
 

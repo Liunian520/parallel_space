@@ -238,6 +238,7 @@ object ToolboxController {
             "a11yStatus" -> result.success(A11yJump.status(activity))
             "a11yOpen" -> result.success(A11yJump.open(activity, call.argument<Boolean>("force") == true))
             "compatReport" -> result.success(OemAdapter.report(activity))
+            "permissionStatus" -> result.success(PermissionStatus.report(activity))
             "compatOpen" -> result.success(OemAdapter.openCheck(activity, call.argument<String>("id") ?: ""))
             "openUrl" -> result.success(openUrl(activity, call.argument<String>("url") ?: ""))
             "vaultUnlock" -> VaultAuth.prompt(activity) { result.success(it) }
