@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.40",
-  "versionCode": 14340,
-  "apkUrl": "https://link.liunianai.cn/f/disk/efudldpbdmw7vckpuom42vrtgn/parallel_space_v1.3.40_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/fkntdg",
-  "sha256": "5e3263ee15f4471426214956b4ac0362546ad24a21e28c591eae5433a1194bd6",
+  "versionName": "1.3.41",
+  "versionCode": 14341,
+  "apkUrl": "https://link.liunianai.cn/f/disk/0o2o84bfsdrds46lpmphf3skt6/parallel_space_v1.3.41_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/u5k5hm",
+  "sha256": "60f0492d395f52edde7594003a1bc09866d4145f9a64a197ad395e6b900d0508",
   "size": 21705772,
-  "notes": "密码工具箱按应用分段并始终显示全部账号；主应用密码本支持按应用名和分身自定义名搜索，不匹配密码。悬浮窗保持只读无输入，旧账号无需迁移，复制与一键填入不变。179项Flutter测试及arm64构建通过，未做HyperOS真机验证。",
-  "publishedAt": "2026-11-19T23:10:37+08:00"
+  "notes": "修复从第二份及以后分身详情新增密码账号归属错误；减少悬浮工具箱重复刷新，保留滚动位置；复制和填入读取最新账号，删除后不使用旧值。既有账号不自动重分配。181项Flutter测试、8组Java main及arm64编译通过，未HyperOS真机验证。",
+  "publishedAt": "2026-11-19T23:40:01+08:00"
 }
