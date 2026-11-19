@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.38",
-  "versionCode": 14338,
-  "apkUrl": "https://link.liunianai.cn/f/disk/g1xncxyta09pskdlmrvmamfcao/parallel_space_v1.3.38_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/z7kx23",
-  "sha256": "de14e66c47860b79bd5ff2bc63f43407ddd3907ce5432c063f51a4f690c57a15",
+  "versionName": "1.3.39",
+  "versionCode": 14339,
+  "apkUrl": "https://link.liunianai.cn/f/disk/jr7lxigxfhkcz9udtuojulru9k/parallel_space_v1.3.39_arm64.apk",
+  "apkShareUrl": "https://link.liunianai.cn/dy8dyh",
+  "sha256": "b5840683eed75514914cb1869f34693ecb54bd3c7934aa915e6a8ed1a7622b19",
   "size": 21705768,
-  "notes": "修复虚拟引擎暂时不可用时，工作资料列表误删虚拟分身及默认设置的问题；保留完整虚拟列表的删除同步行为。158项Flutter测试及arm64构建通过，未做真机验证。",
-  "publishedAt": "2026-11-19T17:37:20+08:00"
+  "notes": "新增品牌权限状态页：区分可检测权限、需手动确认和分身相机诊断，未知/不适用不再误标正常；返回系统设置自动刷新并丢弃过期结果。保留无障碍常驻自愈与原有主动授权入口，修正品牌设置跳转。165项Flutter测试及arm64构建通过，未做真机验证。",
+  "publishedAt": "2026-11-19T21:05:44+08:00"
 }
