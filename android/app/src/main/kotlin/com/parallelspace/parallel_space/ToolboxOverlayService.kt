@@ -29,6 +29,7 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -79,6 +80,8 @@ class ToolboxOverlayService : Service() {
     private val vaultCache = AtomicReference<List<VaultStore.Entry>>(emptyList())
     private val headingMemo = HashMap<String, String>()
     private val headingBusy = HashSet<String>()
+    private var vaultScrollY = 0
+    private var vaultCatchUpQueued = false
     private var lastWatchLogAt = 0L
     /** 视图代数：removeView / 重建时递增，避免旧动画回调整坏新窗。 */
     private var viewGen = 0
@@ -835,9 +838,11 @@ class ToolboxOverlayService : Service() {
         while (rebuildTimes.isNotEmpty() && now - rebuildTimes.first() > 1000L) rebuildTimes.removeFirst()
         if (rebuildTimes.size > 5) {
             ToolboxCrashLog.append(this, "WARN", "rebuild storm ${rebuildTimes.size}/s reason=$reason; skipped")
+            scheduleVaultCatchUp()
             return
         }
         try {
+            captureVaultScroll()
             val panel = card ?: return
             if (!expanded) return
             panel.removeAllViews()
@@ -1150,6 +1155,8 @@ class ToolboxOverlayService : Service() {
                 }
             }
         }
+        scroll.tag = VAULT_SCROLL
+        restoreVaultScroll(scroll)
         scroll.addView(col)
         panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(300)))
     }
@@ -1327,7 +1334,7 @@ class ToolboxOverlayService : Service() {
                 trailing = listOf(
                     iconAction(R.drawable.ic_copy, "复制账号") {
                         tapFeedback(it)
-                        copyUser(e)
+                        copyAccount(e.id)
                     },
                 ),
             ))
@@ -1341,9 +1348,10 @@ class ToolboxOverlayService : Service() {
             }
             val eyeBtn = iconAction(R.drawable.ic_visibility, "显示或隐藏密码") { v ->
                 tapFeedback(v)
+                val live = vaultCache.get().firstOrNull { it.id == e.id }
                 showPass = !showPass
-                passTv.text = maskPass(e.password, show = showPass)
-                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap toggle_pass show=$showPass")
+                passTv.text = if (live == null) "未填写" else maskPass(live.password, show = showPass)
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap toggle_pass show=$showPass id=${e.id} missing=${live == null}")
             }
             addView(fieldRow(
                 label = "密码",
@@ -1352,14 +1360,14 @@ class ToolboxOverlayService : Service() {
                     eyeBtn,
                     iconAction(R.drawable.ic_copy, "复制密码") {
                         tapFeedback(it)
-                        copyPass(e)
+                        copySecret(e.id)
                     },
                 ),
             ))
 
             addView(primaryFillButton("一键填入") {
                 tapFeedback(it)
-                performFill(e)
+                performFill(e.id)
             })
         }
     }
@@ -1474,26 +1482,32 @@ class ToolboxOverlayService : Service() {
      * 一键填入：写入**当前前台窗口**的输入框，不要求条目所属包名与当前分身一致。
      * 这样从「其他分身」的账号列表里选一条，也能填到正在登录的页面。
      */
-    private fun performFill(e: VaultStore.Entry) {
+    private fun performFill(id: String) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastPerformFillAt < 1000L) {
-            ToolboxCrashLog.append(this, "INFO", "tap fill debounce id=${e.id} gap=${now - lastPerformFillAt}ms")
+            ToolboxCrashLog.append(this, "INFO", "tap fill debounce id=$id gap=${now - lastPerformFillAt}ms")
             toast("正在填入，请稍候")
             return
         }
         lastPerformFillAt = now
-        ToolboxCrashLog.append(this, "INFO", "tap fill id=${e.id} userLen=${e.username.length} passLen=${e.password.length}")
-        // 先收起面板，避免无障碍读到悬浮窗；再填入。
+        ToolboxCrashLog.append(this, "INFO", "tap fill id=$id")
+        // 先收起面板，避免无障碍读到悬浮窗；再按当前缓存填入。
         if (expanded) collapse()
         handler.postDelayed({
+            val fill = VaultLive.onFill(liveRows(), id)
+            if (fill.missing) {
+                ToolboxCrashLog.append(this, "INFO", "tap fill missing id=$id")
+                toast("这条账号已删除或不存在")
+                return@postDelayed
+            }
             runBg {
                 val r = try {
-                    ToolboxController.fill(this@ToolboxOverlayService, e.username, e.password)
+                    ToolboxController.fill(this@ToolboxOverlayService, fill.user, fill.pass)
                 } catch (t: Throwable) {
                     ToolboxCrashLog.append(this@ToolboxOverlayService, "ERROR", "tap fill crashed", t)
                     "error"
                 }
-                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap fill result=$r")
+                ToolboxCrashLog.append(this@ToolboxOverlayService, "INFO", "tap fill result=$r id=$id")
                 handler.post {
                     toast(fillMessage(r))
                     if (r == "copied" && !OemAdapter.accessibilityOn(this@ToolboxOverlayService)) {
@@ -1504,18 +1518,32 @@ class ToolboxOverlayService : Service() {
         }, 360)
     }
 
-    private fun copyUser(e: VaultStore.Entry) {
-        ToolboxCrashLog.append(this, "INFO", "tap copy_account id=${e.id} empty=${e.username.isEmpty()}")
-        val ok = ToolboxController.copyText(this, e.username)
-        ToolboxCrashLog.append(this, "INFO", "tap copy_account ok=$ok")
-        toast(if (ok) "已复制账号" else if (e.username.isEmpty()) "没有账号可复制" else "复制失败")
+    private fun copyAccount(id: String) {
+        val decision = VaultLive.onField(liveRows(), id, "user")
+        ToolboxCrashLog.append(this, "INFO", "tap copy_account id=$id action=${decision.action}")
+        when (decision.action) {
+            VaultLive.Action.MISSING -> toast("这条账号已删除或不存在")
+            VaultLive.Action.EMPTY -> toast("没有账号可复制")
+            VaultLive.Action.COPY -> {
+                val ok = ToolboxController.copyText(this, decision.text)
+                toast(if (ok) "已复制账号" else "复制失败")
+            }
+            else -> toast("复制失败")
+        }
     }
 
-    private fun copyPass(e: VaultStore.Entry) {
-        ToolboxCrashLog.append(this, "INFO", "tap copy_password id=${e.id} empty=${e.password.isEmpty()}")
-        val ok = ToolboxController.copyText(this, e.password)
-        ToolboxCrashLog.append(this, "INFO", "tap copy_password ok=$ok")
-        toast(if (ok) "已复制密码" else if (e.password.isEmpty()) "没有密码可复制" else "复制失败")
+    private fun copySecret(id: String) {
+        val decision = VaultLive.onField(liveRows(), id, "pass")
+        ToolboxCrashLog.append(this, "INFO", "tap copy_password id=$id action=${decision.action}")
+        when (decision.action) {
+            VaultLive.Action.MISSING -> toast("这条账号已删除或不存在")
+            VaultLive.Action.EMPTY -> toast("没有密码可复制")
+            VaultLive.Action.COPY -> {
+                val ok = ToolboxController.copyText(this, decision.text)
+                toast(if (ok) "已复制密码" else "复制失败")
+            }
+            else -> toast("复制失败")
+        }
     }
 
     private fun matchesInstance(e: VaultStore.Entry): Boolean {
@@ -1605,7 +1633,7 @@ class ToolboxOverlayService : Service() {
                 emptyList()
             }
             val old = vaultCache.getAndSet(list)
-            if (old == list) return@runBg
+            if (VaultLive.sameSnapshot(liveRows(old), liveRows(list))) return@runBg
             if (thenRebuild || (expanded && (mode == Mode.VAULT || mode == Mode.VAULT_DETAIL))) {
                 handler.post {
                     if (!expanded) return@post
@@ -1613,6 +1641,41 @@ class ToolboxOverlayService : Service() {
                 }
             }
         }
+    }
+
+    private fun liveRows(entries: List<VaultStore.Entry> = vaultCache.get()): List<VaultLive.Row> {
+        val out = ArrayList<VaultLive.Row>(entries.size)
+        for (e in entries) {
+            out.add(VaultLive.Row(e.id, e.pkg, e.cloneUid, e.label, e.username, e.password, e.note))
+        }
+        return out
+    }
+
+    private fun captureVaultScroll() {
+        val scroller = card?.findViewWithTag<ScrollView>(VAULT_SCROLL) ?: return
+        vaultScrollY = scroller.scrollY
+    }
+
+    private fun restoreVaultScroll(scroll: ScrollView) {
+        scroll.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (!scroll.viewTreeObserver.isAlive) return
+                val child = scroll.getChildAt(0) ?: return
+                if (child.height == 0 || scroll.height == 0) return
+                scroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                val max = (child.height - scroll.height).coerceAtLeast(0)
+                scroll.scrollTo(0, VaultLive.clampScroll(vaultScrollY, max))
+            }
+        })
+    }
+
+    private fun scheduleVaultCatchUp() {
+        if (vaultCatchUpQueued) return
+        vaultCatchUpQueued = true
+        handler.postDelayed({
+            vaultCatchUpQueued = false
+            if (expanded) rebuild("vault_catchup")
+        }, 1000L)
     }
 
     private fun resolveAppInfoAsync(packageName: String) {
@@ -1979,5 +2042,6 @@ class ToolboxOverlayService : Service() {
         private const val DENY_WINDOW_MS = 10_000L
         /** 用户在设置里关闭工具箱时显式停服，不靠 tick 轮询。 */
         const val ACTION_USER_STOP = "com.parallelspace.parallel_space.action.TOOLBOX_USER_STOP"
+        private const val VAULT_SCROLL = "vault-list"
     }
 }

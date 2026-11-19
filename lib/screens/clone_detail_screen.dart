@@ -195,7 +195,7 @@ class CloneDetailScreen extends StatelessWidget {
                   icon: Icons.key_rounded,
                   title: '管理此分身账号',
                   subtitle: '添加或编辑该分身的登录账号，工具箱可一键填入',
-                  onTap: () => openVaultScreen(context, initialPackage: c.packageName, openEditor: true),
+                  onTap: () => openVaultScreen(context, initialPackage: c.uid, openEditor: true),
                 ),
               ]),
               SectionCard(title: '管理', children: [

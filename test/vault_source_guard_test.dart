@@ -77,7 +77,7 @@ void main() {
 
   test('分身详情入口和密码本文件保持原样', () {
     expect(
-      detail.contains('openVaultScreen(context, initialPackage: c.packageName, openEditor: true)'),
+      detail.contains('openVaultScreen(context, initialPackage: c.uid, openEditor: true)'),
       isTrue,
     );
     expect(
