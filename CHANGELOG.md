@@ -1,6 +1,19 @@
 # 更新记录
 
-版本号只递增最后一位。当前是 1.3.37（versionCode 12337），下一次是 1.3.38（12338）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+版本号只递增最后一位。当前是 1.3.38（versionCode 12338），下一次是 1.3.39（12339）。1.3.x 使用 `versionCode = 12300 + 修订号`。每次改版本，同步更新 `pubspec.yaml`、`lib/config/app_version.dart`、`README.md` 顶部徽章和本文件。
+
+## [1.3.38] - 2026-11-19
+
+### 修复：工作资料名单不再清掉虚拟分身和默认
+
+- **根因**：虚拟引擎不可用、工作资料状态是 ready 时，刷新把工作资料应用名单拿去删除同步。那份名单没有虚拟 userId，解析后都是 0。于是 userId 不是 0 的虚拟分身，以及工作资料里没有的 userId 0 分身，会连同 `launchKey` 和默认一起被删掉。点名打开不会因此改去另一份，但默认会悄悄消失。
+- **现在**：这条路径只更新能对上的名称、版本和冻结状态，不删除缺席分身，也不改默认。引擎恢复后，完整的虚拟名单仍然可以删除确认已经不在的分身。不完整的虚拟名单仍不删除，和 1.3.37 一样。删掉后再用同一个编号新建，不继承原来的 `launchKey`。
+- 取舍：只装在工作资料、没有虚拟引擎的应用，从工作资料卸载后，刷新不会再自动拿掉卡片，需要在应用里删除。
+- 说明见 `docs/default-clone.md`。
+
+### 其他
+
+- 版本 `1.3.38+12338`。按现有 Flutter 分包规则，arm64 的 versionCode 会是 14338。这一版还没有在打包机上编译，也没有上传。真机尚未验证。
 
 ## [1.3.37] - 2026-11-17
 
@@ -13,7 +26,7 @@
 
 ### 其他
 
-- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 是 14337。打包机对上一提交 `83ab3fc` 的 release Kotlin 编译失败：`listReport` 里 `mapOf` 的 `if` 缺少 else。这一笔改成先建 map，有错误时再放入 `error`。契约不变：`complete`、`apps`，以及可选的 `error`；只有 `complete=true` 且没有 `error` 才删除缺席分身。打包机已对 `8323338` 打出 arm64 release，versionName 1.3.37，versionCode 14337，签名证书与 1.3.36 相同。APK SHA-256 `1d7e9b3959358c598087f68a3af8687589196c72a7ad36e3d98b0c3c510c16f2`（21705768 字节）。安装包里没有网盘 API key / token。此时尚未上传。`flutter analyze` 干净，153 个 Flutter 测试通过；公开通知 SDK 检查在 Android 36 上通过；五个 Java `main` 套件通过（含 CloneEnumPolicyTest）。这些套件入口是 `main()` 不是 JUnit，不能当成 JUnit 已通过。真机上的这次修复尚未验证。
+- 版本 `1.3.37+12337`。按现有 Flutter 分包规则，arm64 的 versionCode 是 14337。打包机对上一提交 `83ab3fc` 的 release Kotlin 编译失败：`listReport` 里 `mapOf` 的 `if` 缺少 else。这一笔改成先建 map，有错误时再放入 `error`。契约不变：`complete`、`apps`，以及可选的 `error`；只有 `complete=true` 且没有 `error` 才删除缺席分身。打包机已对 `8323338` 打出 arm64 release，versionName 1.3.37，versionCode 14337，签名证书与 1.3.36 相同。APK SHA-256 `1d7e9b3959358c598087f68a3af8687589196c72a7ad36e3d98b0c3c510c16f2`（21705768 字节）。安装包里没有网盘 API key / token。这一版已经发布。`flutter analyze` 干净，153 个 Flutter 测试通过；公开通知 SDK 检查在 Android 36 上通过；五个 Java `main` 套件通过（含 CloneEnumPolicyTest）。这些套件入口是 `main()` 不是 JUnit，不能当成 JUnit 已通过。真机上的这次修复尚未验证。
 
 ## [1.3.36] - 2026-11-16
 

@@ -456,7 +456,8 @@ class CloneStore extends ChangeNotifier {
             _relinkTried = true;
             unawaited(NativeBridge.repairWorkLink());
           }
-          sync(snap.apps);
+          // 工作资料名单没有虚拟 userId，缺席不等于虚拟分身已删除。
+          sync(snap.apps, removeAbsent: false);
         } else {
           notifyListeners();
         }
@@ -490,19 +491,21 @@ class CloneStore extends ChangeNotifier {
     }
   }
 
-  /// 同步：只维护用户通过「添加分身」加入的条目。
-  /// - 更新仍在工作资料中的分身的名称/版本/冻结状态
-  /// - 移除已不在工作资料中的分身
-  /// - 绝不把系统预装（联系人 / Play 商店 / 文件 / 电话等）自动加进列表
+  /// 同步用户已经添加的分身。
+  ///
+  /// [removeAbsent] 为 true 时，名单里没有的分身会被删掉。虚拟引擎的完整名单用这个。
+  /// 工作资料刷新必须传 false：那份名单没有虚拟 userId，不能用来判断虚拟分身还在不在。
+  /// 预装不会被加进来，已经在列表里的预装仍由 [_scrubPresets] 清掉。
   @visibleForTesting
-  void sync(List<AppInfo> apps) {
+  void sync(List<AppInfo> apps, {bool removeAbsent = true}) {
     String k(String pkg, int u) => '$pkg#$u';
     final byPkg = {for (final a in apps) k(a.packageName, a.userId): a};
     var changed = _scrubPresets();
-    final before = _clones.length;
-    // 不在工作资料中的用户分身 → 移除；预装即使还在工作资料也绝不保留
-    _clones.removeWhere((c) => !c.userAdded || isPresetPackage(c.packageName, label: c.appName) || !byPkg.containsKey(k(c.packageName, c.userId)));
-    if (_clones.length != before) changed = true;
+    if (removeAbsent) {
+      final before = _clones.length;
+      _clones.removeWhere((c) => !byPkg.containsKey(k(c.packageName, c.userId)));
+      if (_clones.length != before) changed = true;
+    }
     if (mockingUid != null && byId(mockingUid!) == null) {
       mockingUid = null;
       _prefs.remove('$_key.mocking');
