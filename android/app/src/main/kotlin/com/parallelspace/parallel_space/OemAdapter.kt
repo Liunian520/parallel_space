@@ -60,6 +60,16 @@ object OemAdapter {
         }
     }
 
+    /**
+     * 页头用的鸿蒙说明。识别细节留在 [isHarmony]，不对外公开。
+     * NEXT 用公开的 [isHarmonyNext]；能跑 Android 应用的华为 / 荣耀说明也从这里出。
+     */
+    fun harmonyNote(): String = when {
+        isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，Alter Ego 无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
+        isHarmony || rom == "emui" || rom == "magicos" -> "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里打开悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面和电池白名单。"
+        else -> ""
+    }
+
     /** 是否可识别为纯血鸿蒙 NEXT（不能跑 Android APK）。 */
     val isHarmonyNext: Boolean by lazy {
         isHarmony && (
@@ -654,11 +664,7 @@ object OemAdapter {
         "harmonyNext" to isHarmonyNext,
         "harmony" to isHarmony,
         "androidAppsOk" to !isHarmonyNext,
-        "harmonyNote" to when {
-            isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，Alter Ego 无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
-            isHarmony || rom == "emui" || rom == "magicos" -> "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里打开悬浮窗、无障碍、应用启动管理（手动管理）、后台弹出界面和电池白名单。"
-            else -> ""
-        },
+        "harmonyNote" to harmonyNote(),
         "brandTip" to brandTip(),
         "overlayHint" to manualHint("overlay"),
         "accessibilityHint" to manualHint("accessibility"),

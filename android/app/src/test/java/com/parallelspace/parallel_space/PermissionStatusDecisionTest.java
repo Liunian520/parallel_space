@@ -28,6 +28,7 @@ public final class PermissionStatusDecisionTest {
         overlayTargetsExcludeUnrelatedPages();
         batteryNavigationDoesNotRequestTheGrant();
         readPathDoesNotWriteOrRequest();
+        harmonyDetectorStaysPrivate();
         keepAlivePathsRemain();
         if (failed > 0) {
             System.err.println(failed + " assertion(s) failed");
@@ -331,6 +332,17 @@ public final class PermissionStatusDecisionTest {
         check(src.contains("checkSelfPermission"), "reads host permissions");
         check(src.contains("toolbox_overlay") && src.contains("mock_location"), "two channel ids");
         check(!src.contains("toolbox_perm"), "permission channel stays off this page");
+    }
+
+    private static void harmonyDetectorStaysPrivate() throws Exception {
+        String oem = Files.readString(Path.of("android/app/src/main/kotlin/com/parallelspace/parallel_space/OemAdapter.kt"));
+        String status = Files.readString(Path.of(
+                "android/app/src/main/kotlin/com/parallelspace/parallel_space/PermissionStatus.kt"));
+        check(oem.contains("private val isHarmony"), "Harmony detector stays private");
+        check(calls(oem, "fun harmonyNote"), "public note wraps the private detector");
+        check(!calls(status, "isHarmony"), "status page does not read private isHarmony");
+        check(status.contains("OemAdapter.harmonyNote()"), "status page uses the public note");
+        check(status.contains("OemAdapter.isHarmonyNext"), "NEXT flag stays the public property");
     }
 
     private static void keepAlivePathsRemain() throws Exception {

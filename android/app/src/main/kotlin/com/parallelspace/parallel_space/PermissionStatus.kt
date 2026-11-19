@@ -50,19 +50,11 @@ object PermissionStatus {
             "release" to Build.VERSION.RELEASE.orEmpty(),
             "abi" to Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
             "harmonyNext" to OemAdapter.isHarmonyNext,
-            "harmony" to OemAdapter.isHarmony,
             "androidAppsOk" to !OemAdapter.isHarmonyNext,
-            "harmonyNote" to harmonyNote(),
+            "harmonyNote" to OemAdapter.harmonyNote(),
             "brandTip" to OemAdapter.brandTip(),
             "items" to items,
         )
-    }
-
-    private fun harmonyNote(): String = when {
-        OemAdapter.isHarmonyNext -> "检测到疑似纯血鸿蒙 NEXT：不能安装或运行 Android APK，Alter Ego 无法在此系统使用。请使用仍兼容 Android 应用的 HarmonyOS 2–4 / EMUI / MagicOS。"
-        OemAdapter.isHarmony || OemAdapter.rom == "emui" || OemAdapter.rom == "magicos" ->
-            "当前为可运行 Android 应用的华为 / 荣耀系统。请在机型适配里查看悬浮窗、无障碍、启动管理和电池白名单。这里的颜色只表示刚才读到的结果。"
-        else -> ""
     }
 
     private fun signals(ctx: Context): PermissionStatusDecision.Inputs {
