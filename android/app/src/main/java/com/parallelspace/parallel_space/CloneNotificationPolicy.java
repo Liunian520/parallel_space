@@ -99,6 +99,42 @@ public final class CloneNotificationPolicy {
         return p;
     }
 
+    /** 解析系统 tag。userId 只能是十进制非负整数，包名不能空。失败返回 null。 */
+    public static Parsed parse(String systemTag) {
+        String[] p = split(systemTag);
+        if (p == null) return null;
+        if (!p[1].matches("[0-9]+")) return null;
+        int userId;
+        int appId;
+        try {
+            userId = Integer.parseInt(p[1]);
+            appId = Integer.parseInt(p[3]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (userId < 0 || p[2].isEmpty()) return null;
+        // 「00」不能当成 userId 0，否则畸形 tag 会挂到第一份分身。
+        if (!Integer.toString(userId).equals(p[1])) return null;
+        String uid = userId <= 0 ? "w:" + p[2] : "w:" + p[2] + "#" + userId;
+        return new Parsed(p[2], userId, appId, p[4], uid);
+    }
+
+    public static final class Parsed {
+        public final String pkg;
+        public final int userId;
+        public final int appId;
+        public final String appTag;
+        public final String uid;
+
+        public Parsed(String pkg, int userId, int appId, String appTag, String uid) {
+            this.pkg = pkg;
+            this.userId = userId;
+            this.appId = appId;
+            this.appTag = appTag == null ? "" : appTag;
+            this.uid = uid;
+        }
+    }
+
     private static int mix(int h, int v) {
         h ^= v;
         h *= 0x7feb352d;

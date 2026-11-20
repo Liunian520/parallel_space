@@ -15,6 +15,7 @@ import '../widgets/blob_background.dart';
 import '../widgets/pressable.dart';
 import '../widgets/section_tile.dart';
 import 'camera_diag_screen.dart';
+import 'clone_notifications_screen.dart';
 import 'compat_screen.dart';
 import 'private_space_screen.dart';
 import 'toolbox_screen.dart';
@@ -58,6 +59,12 @@ class SettingsScreen extends StatelessWidget {
               title: '密码本',
               subtitle: '在这里添加、编辑和管理账号；工具箱只负责填入和复制',
               onTap: () => openVaultScreen(context),
+            ),
+            GlassTile(
+              icon: Icons.notifications_none_rounded,
+              title: '分身通知',
+              subtitle: '查看虚拟分身正在显示的通知',
+              onTap: () => _push(context, const CloneNotificationsScreen()),
             ),
             GlassTile(
               icon: Icons.widgets_rounded,

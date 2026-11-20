@@ -188,6 +188,14 @@ class MainActivity : FlutterFragmentActivity() {
                     "cameraDiagLog" -> result.success(CameraDiag.read(this))
                     "clearCameraDiag" -> { CameraDiag.clear(this); result.success(true) }
                     "launchVirtual" -> launchVirtualWithPerms(call.argument<String>("pkg")!!, call.argument<Int>("userId") ?: 0, result)
+                    "cloneNotifications" -> result.success(CloneNotificationReader.read(this))
+                    "cloneNotificationCancel" -> result.success(
+                        CloneNotificationReader.cancel(
+                            this,
+                            call.argument<String>("tag") ?: "",
+                            call.argument<Int>("id") ?: 0,
+                        ),
+                    )
                     "syncCloneNames" -> result.success(CloneNames.sync(this, call.argument<List<Map<String, Any?>>>("items") ?: emptyList()))
                     "deleteVirtual" -> {
                         val pkg = call.argument<String>("pkg")!!
