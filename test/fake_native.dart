@@ -42,6 +42,9 @@ class FakeNative {
   String vaultUnlockResult = 'ok';
   bool vaultOpen = true;
   final List<Map<String, Object?>> vault = [];
+  Map<String, Object?> cloneNotificationsResult = const {'ok': true, 'items': <Object>[]};
+  Future<Object?> Function()? cloneNotificationsHandler;
+  String cloneNotificationCancelResult = 'ok';
 
   Iterable<String> get methods => calls.map((c) => c.method);
 
@@ -162,6 +165,12 @@ class FakeNative {
         final pkg = a['pkg'] as String?;
         if (pkg != null && missingInWork.contains(pkg)) return {'r': 'not_found'};
         return {'r': 'ok'};
+      case 'cloneNotifications':
+        final handler = cloneNotificationsHandler;
+        if (handler != null) return handler();
+        return cloneNotificationsResult;
+      case 'cloneNotificationCancel':
+        return cloneNotificationCancelResult;
       case 'deleteVirtual':
         if (!virtualAvailable) return {'r': 'engine_unavailable'};
         final delUid = a['userId'];

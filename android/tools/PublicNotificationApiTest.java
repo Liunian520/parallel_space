@@ -43,6 +43,17 @@ public final class PublicNotificationApiTest {
             if (c.getParameterCount() == 10) ctor = true;
         }
         if (!ctor) throw new AssertionError("StatusBarNotification 缺少 10 参数公开构造函数");
+        sbn.getMethod("getTag");
+        sbn.getMethod("getId");
+        sbn.getMethod("getPostTime");
+        sbn.getMethod("getNotification");
+
+        Class<?> manager = Class.forName("android.app.NotificationManager");
+        manager.getMethod("getActiveNotifications");
+        manager.getMethod("cancel", String.class, int.class);
+        notification.getField("FLAG_GROUP_SUMMARY");
+        notification.getField("EXTRA_TITLE");
+        notification.getField("EXTRA_TEXT");
         System.out.println("PublicNotificationApiTest ok");
     }
 

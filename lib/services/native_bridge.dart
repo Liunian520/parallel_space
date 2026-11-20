@@ -281,6 +281,13 @@ class NativeBridge {
     return m == null ? {'r': 'error'} : Map<String, dynamic>.from(m);
   }
 
+  /// 宿主自己仍在显示、且 tag 能解析的分身通知。失败时 ok=false，不带通知正文。
+  static Future<Map?> cloneNotifications() => _call<Map>('cloneNotifications');
+
+  /// 'ok' | 'rejected' | 'unavailable'
+  static Future<String> cloneNotificationCancel(String tag, int id) async =>
+      await _call<String>('cloneNotificationCancel', {'tag': tag, 'id': id}) ?? 'unavailable';
+
   /// 只删除这个实例（userId）下的应用与数据。
   static Future<Map<String, dynamic>> deleteVirtual(String pkg, {int userId = 0}) async {
     final m = await _call<Map>('deleteVirtual', {'pkg': pkg, 'userId': userId});
