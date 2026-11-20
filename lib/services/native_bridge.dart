@@ -270,6 +270,23 @@ class NativeBridge {
     }
   }
 
+  /// 磁盘目录、名称文件或已固定快捷方式里还在的分身身份。读不到就是空，不当成失败。
+  static Future<List<Map<String, dynamic>>> recoverableClones() async {
+    if (!_android) return const [];
+    try {
+      final raw = await _ch.invokeMethod<Object?>('recoverableClones');
+      if (raw is! List) return const [];
+      return [
+        for (final item in raw)
+          if (item is Map) Map<String, dynamic>.from(item),
+      ];
+    } on PlatformException {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
   /// userId < 0：新建一个实例（再分身一个）；返回里带 userId。
   static Future<Map<String, dynamic>> cloneVirtual(String pkg, {int userId = 0}) async {
     final m = await _call<Map>('cloneVirtual', {'pkg': pkg, 'userId': userId});

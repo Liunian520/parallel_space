@@ -124,7 +124,67 @@ void main() {
     expect(choice.clone, isNull);
   });
 
-  test('权威空列表会删除并在重启后仍为空；复用 userId 不继承 launchKey', () async {
+  test('权威空列表不再清掉分身、自定义名、默认和快捷方式身份', () async {
+    final s = await _two();
+    _channel((call) async {
+      if (call.method == 'virtualStatus') return {'available': true, 'engine': 'fake'};
+      if (call.method == 'listVirtualClones') return {'complete': true, 'apps': <Map>[]};
+      if (call.method == 'listWorkApps') return {'state': 'none', 'apps': <Map>[]};
+      if (call.method == 'recoverableClones') return <Map>[];
+      return null;
+    });
+    await s.refresh();
+    expect(s.resolve('w:com.a')!.customLabel, '工作号');
+    expect(s.resolve('w:com.a#1')!.customLabel, '小号');
+    expect(s.defaultClone('com.a')!.launchKey, _key);
+    final restarted = CloneStore(await SharedPreferences.getInstance());
+    expect(restarted.resolve('w:com.a#1')!.customLabel, '小号');
+    expect(restarted.defaultLabel('com.a'), '工作号');
+  });
+
+  test('名单已被清空后，磁盘或快捷方式里的原身份可以加回，不重写数据', () async {
+    SharedPreferences.setMockInitialValues({'clones.v1.userOnly': true});
+    final s = CloneStore(await SharedPreferences.getInstance());
+    expect(s.clones, isEmpty);
+    _channel((call) async {
+      if (call.method == 'virtualStatus') return {'available': true, 'engine': 'fake'};
+      if (call.method == 'listVirtualClones') return {'complete': true, 'apps': <Map>[]};
+      if (call.method == 'listWorkApps') return {'state': 'none', 'apps': <Map>[]};
+      if (call.method == 'recoverableClones') {
+        return [
+          {'pkg': 'com.mm', 'userId': 0, 'label': '崔宇珍'},
+          {'pkg': 'com.mm', 'userId': 1, 'label': '陈令轩'},
+        ];
+      }
+      return null;
+    });
+    await s.refresh();
+    expect(s.resolve('w:com.mm')!.customLabel, '崔宇珍');
+    expect(s.resolve('w:com.mm#1')!.customLabel, '陈令轩');
+    expect(s.byInstance('com.mm', 0)!.userAdded, isTrue);
+    final restarted = CloneStore(await SharedPreferences.getInstance());
+    expect(restarted.resolve('w:com.mm#1')!.customLabel, '陈令轩');
+  });
+
+  test('权威的较短名单仍删除缺席分身，残留证据不能加回', () async {
+    final s = await _two();
+    _channel((call) async {
+      if (call.method == 'virtualStatus') return {'available': true, 'engine': 'fake'};
+      if (call.method == 'listVirtualClones') return {'complete': true, 'apps': [_app(1)]};
+      if (call.method == 'listWorkApps') return {'state': 'none', 'apps': <Map>[]};
+      if (call.method == 'recoverableClones') {
+        return [
+          {'pkg': 'com.a', 'userId': 0, 'label': '工作号'},
+        ];
+      }
+      return null;
+    });
+    await s.refresh();
+    expect(s.byInstance('com.a', 0), isNull);
+    expect(s.resolve('w:com.a#1')!.customLabel, '小号');
+  });
+
+  test('权威空列表不会清掉已有分身；显式删除后再建不继承 launchKey', () async {
     final s = await _two();
     _channel((call) async {
       if (call.method == 'virtualStatus') return {'available': true, 'engine': 'fake'};
@@ -133,14 +193,15 @@ void main() {
       return null;
     });
     await s.refresh();
-    expect(s.clones, isEmpty);
+    expect(s.resolve('w:com.a')!.customLabel, '工作号');
+    expect(s.defaultClone('com.a')!.launchKey, _key);
+    final gone = s.byInstance('com.a', 0)!;
+    s.remove(gone.uid);
+    s.adoptRestored(packageName: 'com.a', userId: 0, appName: '示例', customLabel: '新的');
+    s.noteCloneDataRestore(packageName: 'com.a', sourceUserId: 0, targetUserId: 0, action: 'overwrite');
+    expect(s.byInstance('com.a', 0)!.launchKey, isNull);
     expect(s.defaultClone('com.a'), isNull);
-    final restarted = CloneStore(await SharedPreferences.getInstance());
-    expect(restarted.clones, isEmpty);
-    restarted.adoptRestored(packageName: 'com.a', userId: 0, appName: '示例', customLabel: '新的');
-    restarted.noteCloneDataRestore(packageName: 'com.a', sourceUserId: 0, targetUserId: 0, action: 'overwrite');
-    expect(restarted.byInstance('com.a', 0)!.launchKey, isNull);
-    expect(restarted.defaultClone('com.a'), isNull);
+    expect(s.resolve('w:com.a#1')!.customLabel, '小号');
   });
 
   test('不完整刷新后覆盖恢复仍是原来的默认；显式删除后再建不继承', () async {

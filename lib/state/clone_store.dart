@@ -432,6 +432,27 @@ class CloneStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 名单已经空了时，把磁盘、名称文件、快捷方式里还在的身份加回。
+  /// 已有的不覆盖。自定义名单独保存，避免和系统应用名写成同一个字段后在下次启动被丢掉。
+  /// 不碰虚拟数据目录，也不把引擎名单里多出来的包写进来。
+  Future<void> _adoptRecovered() async {
+    final evidence = await NativeBridge.recoverableClones();
+    for (final item in evidence) {
+      final pkg = item['pkg'];
+      final user = item['userId'];
+      if (pkg is! String || user is! num) continue;
+      final userId = user.toInt();
+      if (byInstance(pkg, userId) != null) continue;
+      final label = item['label'] is String ? (item['label'] as String).trim() : '';
+      adoptRestored(
+        packageName: pkg,
+        userId: userId,
+        appName: pkg,
+        customLabel: label.isEmpty ? null : label,
+      );
+    }
+  }
+
   /// 从系统读取工作资料状态与其中的应用，并同步分身列表。
   bool _relinkTried = false;
 
@@ -444,8 +465,12 @@ class CloneStore extends ChangeNotifier {
 
       if (engineAvailable) {
         final listed = await NativeBridge.listVirtualClones();
-        // 不完整或失败的列举不能当成「这些分身已经没了」。
-        if (listed.authoritative) sync(listed.apps);
+        // 空列表不是「确认一台都没装」。Binder 失败时引擎会返回空列表而不抛错。
+        final drop = listed.authoritative && listed.apps.isNotEmpty;
+        sync(listed.apps, removeAbsent: drop);
+        // 只在名单已经是空的时候，用磁盘、名称或快捷方式把身份加回来。
+        // 不把引擎此刻列出的包直接写进空名单，避免把用户没添加过的应用变成新分身。
+        if (_clones.isEmpty) await _adoptRecovered();
         // 仍探测工作资料状态（设置页展示），但不依赖它
         status = (await NativeBridge.workSnapshot()).status;
       } else {

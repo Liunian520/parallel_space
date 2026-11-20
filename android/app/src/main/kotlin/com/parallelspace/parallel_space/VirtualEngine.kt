@@ -135,8 +135,9 @@ object VirtualEngine {
     }
 
     /**
-     * 分身列举。complete=true 且没有 error 才表示这份名单是完整的，缺席的可以删。
-     * 引擎未就绪、用户列表失败、或某个 user 抛错时 complete=false，调用方必须保留已有分身。
+     * 分身列举。complete=true 且没有 error，并且名单不是空的，缺席的才可以删。
+     * 引擎未就绪、用户列表失败、某个 user 抛错，或空名单但磁盘上还有分身目录时，complete=false。
+     * 空名单本身也不再删除已保存的分身：Binder 失败时 getInstalledPackages 返回空列表。
      */
     fun listReport(): Map<String, Any?> {
         if (!ready) {
@@ -174,10 +175,13 @@ object VirtualEngine {
                 Log.e(TAG, "listCloned user=$uid", t)
             }
         }
-        val complete = CloneEnumPolicy.authoritative(true, known, failed)
+        val enumerated = CloneEnumPolicy.authoritative(true, known, failed)
+        val diskRemains = appCtx?.let { CloneRecovery.diskHasClones(it) } == true
+        val complete = CloneRetention.reportComplete(enumerated, out.size, diskRemains)
         val error = when {
             !known -> "users_unknown"
             failed > 0 -> "partial_users"
+            out.isEmpty() && diskRemains -> "disk_remains"
             else -> null
         }
         val report = linkedMapOf<String, Any?>(
