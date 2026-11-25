@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.43",
-  "versionCode": 14343,
-  "apkUrl": "https://link.liunianai.cn/f/disk/6irbbajx8tyhqd5hhkfxquz69p/parallel_space_v1.3.43_arm64.apk",
-  "apkShareUrl": "https://link.liunianai.cn/urqyje",
-  "sha256": "e35828ca45fe491eba56dc083f1df93f15227106641cdfd77e333a3ee0982e40",
-  "size": 21705772,
-  "notes": "修复系统升级后引擎返回空名单时，1.3.41 误把全部分身写成已删除；空名单或列举失败不再清除已保存的分身、自定义名和默认分身；启动时可从仍在的虚拟数据目录、自定义名和桌面快捷方式恢复列表身份。若系统已清除应用数据或虚拟目录，账号数据无法恢复。184 项 Flutter 测试、9 组 Java main 及 arm64 编译通过，未在澎湃 OS 4.0 真机验证。",
-  "publishedAt": "2026-11-20T13:56:51+08:00"
+  "versionName": "1.3.44",
+  "versionCode": 14344,
+  "apkUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.44_arm64.apk",
+  "apkShareUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.44_arm64.apk",
+  "sha256": "646d1d531fe675376abdab9a4f47a820791d4d885c150ee1a2fd5d6c17603ad6",
+  "size": 21705856,
+  "notes": "修复澎湃 OS 4.0（Android 17 / API 37）IServiceConnection 4参回调导致的分身闪退；新增系统升级后孤立用户数据目录原地补登记与部分列表恢复，找回升级后遗漏的分身；点桌面快捷方式未命中时先刷新一次名单。185 项 Flutter 测试、10 组 Java main 及 arm64 编译通过，尚未在澎湃 OS 4.0 真机验证。",
+  "publishedAt": "2026-11-25T14:44:30+08:00"
 }
