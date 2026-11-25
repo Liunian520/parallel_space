@@ -1,10 +1,10 @@
 {
-  "versionName": "1.3.44",
-  "versionCode": 14344,
-  "apkUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.44_arm64.apk",
-  "apkShareUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.44_arm64.apk",
-  "sha256": "646d1d531fe675376abdab9a4f47a820791d4d885c150ee1a2fd5d6c17603ad6",
-  "size": 21705856,
-  "notes": "修复澎湃 OS 4.0（Android 17 / API 37）IServiceConnection 4参回调导致的分身闪退；新增系统升级后孤立用户数据目录原地补登记与部分列表恢复，找回升级后遗漏的分身；点桌面快捷方式未命中时先刷新一次名单。185 项 Flutter 测试、10 组 Java main 及 arm64 编译通过，尚未在澎湃 OS 4.0 真机验证。",
-  "publishedAt": "2026-11-25T14:44:30+08:00"
+  "versionName": "1.3.45",
+  "versionCode": 14345,
+  "apkUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.45_arm64.apk",
+  "apkShareUrl": "https://app.liunianai.cn/releases/parallel_space_v1.3.45_arm64.apk",
+  "sha256": "20e954eb4bcce7b68687eee023443abe160af751b45cfec7b717087c63518681",
+  "size": 21722240,
+  "notes": "引擎空名单下扩大从已保存列表、名称与快捷方式的原地补登记；点开报「分身不存在」时自动原地补登记再启动（保留原有数据，失败时显示真实错误）；工具箱诊断日志补全引擎初始化、服务连接、磁盘目录摘要与补登记全链路日志，方便排查澎湃 OS 4.0 真机问题。",
+  "publishedAt": "2026-11-25T16:00:00+08:00"
 }
